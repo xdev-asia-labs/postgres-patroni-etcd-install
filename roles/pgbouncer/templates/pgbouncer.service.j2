@@ -1,0 +1,38 @@
+[Unit]
+Description=PgBouncer Connection Pooler for PostgreSQL
+Documentation=man:pgbouncer(1)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=postgres
+Group=postgres
+
+# PgBouncer configuration (remove -d flag, run in foreground)
+ExecStart=/usr/sbin/pgbouncer /etc/pgbouncer/pgbouncer.ini
+ExecReload=/usr/bin/kill -HUP $MAINPID
+KillMode=mixed
+KillSignal=SIGINT
+
+# Runtime directory
+RuntimeDirectory=pgbouncer
+RuntimeDirectoryMode=0755
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/pgbouncer /var/run/postgresql
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=65536
+
+[Install]
+WantedBy=multi-user.target

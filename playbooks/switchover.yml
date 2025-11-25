@@ -1,0 +1,103 @@
+---
+# Switchover Playbook
+#
+# This playbook performs a planned switchover to a specific node.
+#
+# Usage:
+#   ansible-playbook playbooks/switchover.yml -e "target_node=node2"
+#   ansible-playbook playbooks/switchover.yml -e "target_node=node2" --check
+
+- name: Perform Planned Switchover
+  hosts: postgres[0]
+  become: yes
+  gather_facts: no
+
+  vars:
+    target_node: ""
+
+  vars_prompt:
+    - name: confirm_switchover
+      prompt: "Are you sure you want to switchover to {{ target_node }}? (yes/no)"
+      private: no
+      default: "no"
+
+  pre_tasks:
+    - name: Verify target node is specified
+      fail:
+        msg: "Please specify target_node using -e 'target_node=nodeX'"
+      when: target_node == ""
+
+    - name: Verify confirmation
+      fail:
+        msg: "Aborted by user"
+      when: confirm_switchover != "yes"
+
+  tasks:
+    - name: Get current cluster status
+      shell: |
+        patronictl -c {{ patroni_config_dir | default('/etc/patroni') }}/patroni.yml list -f json
+      register: cluster_status
+
+    - name: Parse cluster info
+      set_fact:
+        cluster_info: "{{ cluster_status.stdout | from_json }}"
+
+    - name: Get current leader
+      set_fact:
+        current_leader: "{{ item.Member }}"
+      loop: "{{ cluster_info }}"
+      when: item.Role == 'Leader'
+
+    - name: Display switchover plan
+      debug:
+        msg: |
+          Switchover Plan:
+          - Current Leader: {{ current_leader }}
+          - Target Node: {{ target_node }}
+
+    - name: Verify target node exists and is healthy
+      shell: |
+        patronictl -c {{ patroni_config_dir }}/patroni.yml list | grep {{ target_node }} | grep running
+      register: target_check
+      failed_when: target_check.rc != 0
+
+    - name: Check if switchover is needed
+      debug:
+        msg: "{{ target_node }} is already the leader, no switchover needed"
+      when: target_node == current_leader
+
+    - name: Perform switchover
+      shell: |
+        patronictl -c {{ patroni_config_dir }}/patroni.yml switchover \
+          --leader {{ current_leader }} \
+          --candidate {{ target_node }} \
+          --force
+      when: target_node != current_leader
+      register: switchover_result
+
+    - name: Display switchover result
+      debug:
+        msg: "{{ switchover_result.stdout_lines }}"
+      when: switchover_result is defined and switchover_result.stdout_lines is defined
+
+    - name: Wait for switchover to complete
+      pause:
+        seconds: 30
+      when: target_node != current_leader
+
+    - name: Verify new cluster status
+      shell: |
+        patronictl -c {{ patroni_config_dir }}/patroni.yml list
+      register: new_status
+
+    - name: Display new cluster status
+      debug:
+        msg: "{{ new_status.stdout_lines }}"
+
+    - name: Success message
+      debug:
+        msg: |
+          ============================================
+          Switchover completed successfully!
+          New leader: {{ target_node }}
+          ============================================

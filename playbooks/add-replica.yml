@@ -1,0 +1,139 @@
+---
+# Add New Replica Playbook
+#
+# This playbook adds a new replica node to an existing PostgreSQL HA cluster.
+#
+# Usage:
+#   ansible-playbook playbooks/add-replica.yml -e "new_replica=pg-node4"
+#
+# Prerequisites:
+#   - Add the new node to inventory first
+#   - Ensure network connectivity between new node and existing cluster
+
+- name: Add New Replica to PostgreSQL HA Cluster
+  hosts: "{{ new_replica }}"
+  become: yes
+  gather_facts: yes
+
+  vars_prompt:
+    - name: confirm_add
+      prompt: "Are you sure you want to add {{ new_replica }} as a new replica? (yes/no)"
+      private: no
+      default: "no"
+
+  pre_tasks:
+    - name: Verify confirmation
+      fail:
+        msg: "Aborted by user"
+      when: confirm_add != "yes"
+
+    - name: Display operation info
+      debug:
+        msg: |
+          Adding new replica node: {{ new_replica }}
+          Ansible host: {{ ansible_host }}
+
+  tasks:
+    # Apply common role
+    - name: Apply common configuration
+      include_role:
+        name: common
+
+    # Install PostgreSQL
+    - name: Install PostgreSQL
+      include_role:
+        name: postgresql
+
+    # Install etcd client (no need for full cluster member)
+    - name: Install etcd tools
+      block:
+        - name: Download etcd
+          get_url:
+            url: "https://github.com/etcd-io/etcd/releases/download/v{{ etcd_version }}/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
+            dest: "/tmp/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
+
+        - name: Extract and install etcdctl
+          unarchive:
+            src: "/tmp/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
+            dest: /tmp
+            remote_src: yes
+
+        - name: Install etcdctl binary
+          copy:
+            src: "/tmp/etcd-v{{ etcd_version }}-linux-amd64/etcdctl"
+            dest: /usr/local/bin/etcdctl
+            mode: "0755"
+            remote_src: yes
+
+    # Configure Patroni
+    - name: Create Patroni directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: postgres
+        group: postgres
+        mode: "0755"
+      loop:
+        - "{{ patroni_config_dir }}"
+        - "{{ patroni_scripts_dir }}"
+
+    - name: Create Patroni configuration
+      template:
+        src: ../roles/patroni/templates/patroni.yml.j2
+        dest: "{{ patroni_config_dir }}/patroni.yml"
+        owner: postgres
+        group: postgres
+        mode: "0600"
+
+    - name: Create Patroni systemd service
+      template:
+        src: ../roles/patroni/templates/patroni.service.j2
+        dest: /etc/systemd/system/patroni.service
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Install Patroni
+      pip:
+        name: "patroni[etcd]=={{ patroni_version }}"
+        executable: pip3
+
+    - name: Reload systemd
+      systemd:
+        daemon_reload: yes
+
+    - name: Start Patroni (will clone from leader)
+      systemd:
+        name: patroni
+        enabled: yes
+        state: started
+
+    - name: Wait for replica to join cluster
+      shell: |
+        patronictl -c {{ patroni_config_dir }}/patroni.yml list | grep {{ patroni_name }} | grep running
+      register: replica_status
+      retries: 60
+      delay: 10
+      until: replica_status.rc == 0
+
+- name: Verify new replica
+  hosts: "{{ groups['postgres'][0] }}"
+  become: yes
+  gather_facts: no
+
+  tasks:
+    - name: Display cluster status with new replica
+      shell: |
+        patronictl -c {{ patroni_config_dir | default('/etc/patroni') }}/patroni.yml list
+      register: cluster_status
+
+    - name: Show cluster status
+      debug:
+        msg: "{{ cluster_status.stdout_lines }}"
+
+    - name: Success message
+      debug:
+        msg: |
+          ============================================
+          New replica {{ new_replica }} added successfully!
+          ============================================

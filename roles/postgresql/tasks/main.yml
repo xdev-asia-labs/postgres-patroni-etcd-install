@@ -1,0 +1,139 @@
+---
+# PostgreSQL Role - Cài đặt PostgreSQL
+
+# =============================================================================
+# ADD POSTGRESQL REPOSITORY
+# =============================================================================
+- name: Import PostgreSQL GPG key (Debian/Ubuntu)
+  apt_key:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Add PostgreSQL repository (Debian/Ubuntu)
+  apt_repository:
+    repo: "deb http://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+    state: present
+    filename: pgdg
+  when: ansible_os_family == "Debian"
+
+- name: Add PostgreSQL repository (RedHat)
+  dnf:
+    name: "https://download.postgresql.org/pub/repos/yum/reporpms/EL-{{ ansible_distribution_major_version }}-x86_64/pgdg-redhat-repo-latest.noarch.rpm"
+    state: present
+    disable_gpg_check: true
+  when: ansible_os_family == "RedHat"
+
+- name: Disable built-in PostgreSQL module (RedHat)
+  shell: dnf -qy module disable postgresql
+  args:
+    warn: false
+  when: ansible_os_family == "RedHat"
+  changed_when: false
+  ignore_errors: true
+
+# =============================================================================
+# INSTALL POSTGRESQL
+# =============================================================================
+- name: Install PostgreSQL packages (Debian/Ubuntu)
+  apt:
+    name:
+      - "postgresql-{{ postgresql_version }}"
+      - "postgresql-contrib-{{ postgresql_version }}"
+      - "postgresql-server-dev-{{ postgresql_version }}"
+      - libpq-dev
+      - python3-psycopg2
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+
+- name: Install PostgreSQL packages (RedHat)
+  dnf:
+    name:
+      - "postgresql{{ postgresql_version }}-server"
+      - "postgresql{{ postgresql_version }}-contrib"
+      - "postgresql{{ postgresql_version }}-devel"
+      - python3-psycopg2
+    state: present
+  when: ansible_os_family == "RedHat"
+
+# =============================================================================
+# STOP AND DISABLE DEFAULT POSTGRESQL SERVICE
+# =============================================================================
+- name: Stop PostgreSQL service
+  systemd:
+    name: postgresql
+    state: stopped
+  ignore_errors: true
+
+- name: Disable PostgreSQL service (Patroni will manage it)
+  systemd:
+    name: postgresql
+    enabled: no
+  ignore_errors: true
+
+# =============================================================================
+# DROP DEFAULT CLUSTER (Debian/Ubuntu)
+# =============================================================================
+- name: Check for existing PostgreSQL cluster (Debian/Ubuntu)
+  shell: pg_lsclusters -h | grep -q "{{ postgresql_version }}" && echo "exists" || echo "not_exists"
+  register: cluster_exists
+  changed_when: false
+  when: ansible_os_family == "Debian"
+
+- name: Drop default PostgreSQL cluster (Debian/Ubuntu)
+  shell: "pg_dropcluster {{ postgresql_version }} main --stop"
+  when:
+    - ansible_os_family == "Debian"
+    - cluster_exists.stdout == "exists"
+  ignore_errors: true
+
+# =============================================================================
+# CREATE DIRECTORIES
+# =============================================================================
+- name: Create PostgreSQL data directory
+  file:
+    path: "{{ postgresql_data_dir }}"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0700"
+
+- name: Create PostgreSQL log directory
+  file:
+    path: "{{ postgresql_data_dir }}/log"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0755"
+
+# =============================================================================
+# CREATE SYMLINKS FOR BINARIES (RedHat)
+# =============================================================================
+- name: Create symlinks for PostgreSQL binaries (RedHat)
+  file:
+    src: "/usr/pgsql-{{ postgresql_version }}/bin/{{ item }}"
+    dest: "/usr/bin/{{ item }}"
+    state: link
+  loop:
+    - psql
+    - pg_config
+    - pg_basebackup
+    - pg_isready
+    - pg_dump
+    - pg_dumpall
+    - pg_restore
+    - pg_rewind
+  when: ansible_os_family == "RedHat"
+
+# =============================================================================
+# VERIFY INSTALLATION
+# =============================================================================
+- name: Verify PostgreSQL installation
+  shell: "{{ postgresql_bin_dir }}/postgres --version"
+  register: pg_version
+  changed_when: false
+
+- name: Display PostgreSQL version
+  debug:
+    msg: "PostgreSQL installed: {{ pg_version.stdout }}"

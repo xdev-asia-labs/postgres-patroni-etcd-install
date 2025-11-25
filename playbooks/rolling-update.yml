@@ -1,0 +1,139 @@
+---
+# Rolling Update Playbook
+#
+# This playbook performs rolling updates to the PostgreSQL HA cluster
+# with zero downtime by updating replicas first, then performing
+# a switchover before updating the old primary.
+#
+# Usage:
+#   ansible-playbook playbooks/rolling-update.yml
+#   ansible-playbook playbooks/rolling-update.yml --check  # Dry run
+
+- name: Rolling Update PostgreSQL HA Cluster
+  hosts: postgres
+  become: yes
+  serial: 1 # One host at a time
+
+  vars:
+    update_pause: 30 # Seconds to wait between hosts
+
+  tasks:
+    - name: Get current cluster status
+      shell: |
+        patronictl -c {{ patroni_config_dir | default('/etc/patroni') }}/patroni.yml list -f json
+      register: cluster_status
+      run_once: true
+      delegate_to: "{{ groups['postgres'][0] }}"
+
+    - name: Parse cluster status
+      set_fact:
+        cluster_info: "{{ cluster_status.stdout | from_json }}"
+
+    - name: Get current leader
+      set_fact:
+        current_leader: "{{ item.Member }}"
+      loop: "{{ cluster_info }}"
+      when: item.Role == 'Leader'
+
+    - name: Display update plan
+      debug:
+        msg: |
+          Rolling Update Plan:
+          - Current Leader: {{ current_leader }}
+          - Updating node: {{ inventory_hostname }}
+
+    # Skip leader initially, update replicas first
+    - name: Update replica nodes first
+      block:
+        - name: Pause Patroni auto-failover
+          shell: |
+            patronictl -c {{ patroni_config_dir }}/patroni.yml pause
+          delegate_to: "{{ groups['postgres'][0] }}"
+          run_once: true
+
+        - name: Stop Patroni service
+          systemd:
+            name: patroni
+            state: stopped
+
+        - name: Perform updates (packages, config, etc.)
+          apt:
+            upgrade: yes
+            update_cache: yes
+          when: ansible_os_family == "Debian"
+
+        - name: Start Patroni service
+          systemd:
+            name: patroni
+            state: started
+
+        - name: Wait for node to rejoin cluster
+          shell: |
+            patronictl -c {{ patroni_config_dir }}/patroni.yml list | grep {{ patroni_name }} | grep running
+          register: node_status
+          retries: 30
+          delay: 5
+          until: node_status.rc == 0
+
+        - name: Resume Patroni auto-failover
+          shell: |
+            patronictl -c {{ patroni_config_dir }}/patroni.yml resume
+          delegate_to: "{{ groups['postgres'][0] }}"
+          run_once: true
+
+        - name: Pause between hosts
+          pause:
+            seconds: "{{ update_pause }}"
+      when: patroni_name != current_leader
+
+    # Update leader last (after switchover)
+    - name: Update leader node
+      block:
+        - name: Perform switchover before updating leader
+          shell: |
+            patronictl -c {{ patroni_config_dir }}/patroni.yml switchover --leader {{ current_leader }} --force
+          delegate_to: "{{ groups['postgres'][0] }}"
+
+        - name: Wait for switchover to complete
+          pause:
+            seconds: 30
+
+        - name: Stop Patroni on old leader
+          systemd:
+            name: patroni
+            state: stopped
+
+        - name: Perform updates on old leader
+          apt:
+            upgrade: yes
+            update_cache: yes
+          when: ansible_os_family == "Debian"
+
+        - name: Start Patroni on old leader
+          systemd:
+            name: patroni
+            state: started
+
+        - name: Wait for node to rejoin as replica
+          shell: |
+            patronictl -c {{ patroni_config_dir }}/patroni.yml list | grep {{ patroni_name }} | grep running
+          register: node_status
+          retries: 30
+          delay: 5
+          until: node_status.rc == 0
+      when: patroni_name == current_leader
+
+- name: Verify cluster after rolling update
+  hosts: postgres[0]
+  become: yes
+  gather_facts: no
+
+  tasks:
+    - name: Display final cluster status
+      shell: |
+        patronictl -c {{ patroni_config_dir | default('/etc/patroni') }}/patroni.yml list
+      register: final_status
+
+    - name: Show cluster status
+      debug:
+        msg: "{{ final_status.stdout_lines }}"

@@ -1,0 +1,162 @@
+---
+# Global Variables for PostgreSQL HA Cluster
+# All variables are loaded from .env file via environment variables
+# Run: export $(cat .env | grep -v '^#' | xargs) before ansible-playbook
+
+# =============================================================================
+# NETWORK SETTINGS
+# =============================================================================
+cluster_network: "{{ lookup('env', 'CLUSTER_NETWORK') | default('172.23.202.0/24', true) }}"
+cluster_netmask: "{{ lookup('env', 'CLUSTER_NETMASK') | default('255.255.255.0', true) }}"
+
+# =============================================================================
+# TIME SYNCHRONIZATION
+# =============================================================================
+ntp_enabled: "{{ lookup('env', 'NTP_ENABLED') | default('true', true) | bool }}"
+ntp_timezone: "{{ lookup('env', 'NTP_TIMEZONE') | default('Asia/Ho_Chi_Minh', true) }}"
+ntp_servers: "{{ lookup('env', 'NTP_SERVERS') | default('0.asia.pool.ntp.org,1.asia.pool.ntp.org,2.asia.pool.ntp.org', true) | split(',') }}"
+
+# =============================================================================
+# FIREWALL SETTINGS
+# =============================================================================
+firewall_enabled: "{{ lookup('env', 'FIREWALL_ENABLED') | default('true', true) | bool }}"
+firewall_type: "{{ lookup('env', 'FIREWALL_TYPE') | default('ufw', true) }}"
+
+# =============================================================================
+# POSTGRESQL SETTINGS
+# =============================================================================
+postgresql_version: "{{ lookup('env', 'POSTGRESQL_VERSION') | default('18', true) }}"
+postgresql_data_dir: "{{ lookup('env', 'POSTGRESQL_DATA_DIR') | default('/var/lib/postgresql/18/data', true) }}"
+postgresql_bin_dir: "{{ lookup('env', 'POSTGRESQL_BIN_DIR') | default('/usr/lib/postgresql/18/bin', true) }}"
+postgresql_config_dir: "{{ lookup('env', 'POSTGRESQL_CONFIG_DIR') | default('/etc/postgresql/18', true) }}"
+postgresql_port: "{{ lookup('env', 'POSTGRESQL_PORT') | default('5432', true) | int }}"
+
+# PostgreSQL Authentication
+postgresql_superuser: "{{ lookup('env', 'POSTGRESQL_SUPERUSER') | default('postgres', true) }}"
+postgresql_superuser_password: "{{ lookup('env', 'POSTGRESQL_SUPERUSER_PASSWORD') }}"
+postgresql_replication_user: "{{ lookup('env', 'POSTGRESQL_REPLICATION_USER') | default('replicator', true) }}"
+postgresql_replication_password: "{{ lookup('env', 'POSTGRESQL_REPLICATION_PASSWORD') }}"
+postgresql_admin_user: "{{ lookup('env', 'POSTGRESQL_ADMIN_USER') | default('admin', true) }}"
+postgresql_admin_password: "{{ lookup('env', 'POSTGRESQL_ADMIN_PASSWORD') }}"
+
+# PostgreSQL Performance Parameters
+postgresql_max_connections: "{{ lookup('env', 'POSTGRESQL_MAX_CONNECTIONS') | default('100', true) | int }}"
+postgresql_shared_buffers: "{{ lookup('env', 'POSTGRESQL_SHARED_BUFFERS') | default('4GB', true) }}"
+postgresql_effective_cache_size: "{{ lookup('env', 'POSTGRESQL_EFFECTIVE_CACHE_SIZE') | default('12GB', true) }}"
+postgresql_maintenance_work_mem: "{{ lookup('env', 'POSTGRESQL_MAINTENANCE_WORK_MEM') | default('1GB', true) }}"
+postgresql_checkpoint_completion_target: "{{ lookup('env', 'POSTGRESQL_CHECKPOINT_COMPLETION_TARGET') | default('0.9', true) | float }}"
+postgresql_wal_buffers: "{{ lookup('env', 'POSTGRESQL_WAL_BUFFERS') | default('64MB', true) }}"
+postgresql_work_mem: "{{ lookup('env', 'POSTGRESQL_WORK_MEM') | default('40MB', true) }}"
+postgresql_min_wal_size: "{{ lookup('env', 'POSTGRESQL_MIN_WAL_SIZE') | default('1GB', true) }}"
+postgresql_max_wal_size: "{{ lookup('env', 'POSTGRESQL_MAX_WAL_SIZE') | default('4GB', true) }}"
+postgresql_random_page_cost: "{{ lookup('env', 'POSTGRESQL_RANDOM_PAGE_COST') | default('1.1', true) | float }}"
+postgresql_effective_io_concurrency: "{{ lookup('env', 'POSTGRESQL_EFFECTIVE_IO_CONCURRENCY') | default('200', true) | int }}"
+postgresql_max_worker_processes: "{{ lookup('env', 'POSTGRESQL_MAX_WORKER_PROCESSES') | default('5', true) | int }}"
+postgresql_max_parallel_workers_per_gather: "{{ lookup('env', 'POSTGRESQL_MAX_PARALLEL_WORKERS_PER_GATHER') | default('2', true) | int }}"
+postgresql_max_parallel_workers: "{{ lookup('env', 'POSTGRESQL_MAX_PARALLEL_WORKERS') | default('5', true) | int }}"
+postgresql_max_parallel_maintenance_workers: "{{ lookup('env', 'POSTGRESQL_MAX_PARALLEL_MAINTENANCE_WORKERS') | default('2', true) | int }}"
+
+# PostgreSQL Replication Parameters
+postgresql_wal_level: "{{ lookup('env', 'POSTGRESQL_WAL_LEVEL') | default('replica', true) }}"
+postgresql_hot_standby: "{{ lookup('env', 'POSTGRESQL_HOT_STANDBY') | default('on', true) }}"
+postgresql_max_wal_senders: "{{ lookup('env', 'POSTGRESQL_MAX_WAL_SENDERS') | default('10', true) | int }}"
+postgresql_max_replication_slots: "{{ lookup('env', 'POSTGRESQL_MAX_REPLICATION_SLOTS') | default('10', true) | int }}"
+postgresql_wal_keep_size: "{{ lookup('env', 'POSTGRESQL_WAL_KEEP_SIZE') | default('1GB', true) }}"
+postgresql_wal_log_hints: "{{ lookup('env', 'POSTGRESQL_WAL_LOG_HINTS') | default('on', true) }}"
+
+# SSL Configuration
+postgresql_ssl_enabled: "{{ lookup('env', 'POSTGRESQL_SSL_ENABLED') | default('false', true) | bool }}"
+postgresql_ssl_cert_file: "{{ lookup('env', 'POSTGRESQL_SSL_CERT_FILE') | default('/etc/postgresql/ssl/server.crt', true) }}"
+postgresql_ssl_key_file: "{{ lookup('env', 'POSTGRESQL_SSL_KEY_FILE') | default('/etc/postgresql/ssl/server.key', true) }}"
+
+# =============================================================================
+# ETCD SETTINGS
+# =============================================================================
+etcd_version: "{{ lookup('env', 'ETCD_VERSION') | default('3.5.25', true) }}"
+etcd_data_dir: "{{ lookup('env', 'ETCD_DATA_DIR') | default('/var/lib/etcd', true) }}"
+etcd_config_dir: "{{ lookup('env', 'ETCD_CONFIG_DIR') | default('/etc/etcd', true) }}"
+etcd_client_port: "{{ lookup('env', 'ETCD_CLIENT_PORT') | default('2379', true) | int }}"
+etcd_peer_port: "{{ lookup('env', 'ETCD_PEER_PORT') | default('2380', true) | int }}"
+etcd_cluster_token: "{{ lookup('env', 'ETCD_CLUSTER_TOKEN') | default('etcd-cluster-patroni', true) }}"
+etcd_user: "{{ lookup('env', 'ETCD_USER') | default('etcd', true) }}"
+etcd_group: "{{ lookup('env', 'ETCD_GROUP') | default('etcd', true) }}"
+
+# etcd Authentication
+etcd_auth_enabled: "{{ lookup('env', 'ETCD_AUTH_ENABLED') | default('false', true) | bool }}"
+etcd_root_password: "{{ lookup('env', 'ETCD_ROOT_PASSWORD') | default('', true) }}"
+
+# =============================================================================
+# PATRONI SETTINGS
+# =============================================================================
+patroni_version: "{{ lookup('env', 'PATRONI_VERSION') | default('4.1.0', true) }}"
+patroni_config_dir: "{{ lookup('env', 'PATRONI_CONFIG_DIR') | default('/etc/patroni', true) }}"
+patroni_scope: "{{ lookup('env', 'PATRONI_SCOPE') | default('postgres', true) }}"
+patroni_namespace: "{{ lookup('env', 'PATRONI_NAMESPACE') | default('/service/', true) }}"
+patroni_api_port: "{{ lookup('env', 'PATRONI_API_PORT') | default('8008', true) | int }}"
+
+# Patroni DCS Settings
+patroni_ttl: "{{ lookup('env', 'PATRONI_TTL') | default('30', true) | int }}"
+patroni_loop_wait: "{{ lookup('env', 'PATRONI_LOOP_WAIT') | default('10', true) | int }}"
+patroni_retry_timeout: "{{ lookup('env', 'PATRONI_RETRY_TIMEOUT') | default('10', true) | int }}"
+patroni_maximum_lag_on_failover: "{{ lookup('env', 'PATRONI_MAXIMUM_LAG_ON_FAILOVER') | default('1048576', true) | int }}"
+
+# Patroni Synchronous Mode
+patroni_synchronous_mode: "{{ lookup('env', 'PATRONI_SYNCHRONOUS_MODE') | default('false', true) | bool }}"
+patroni_synchronous_mode_strict: "{{ lookup('env', 'PATRONI_SYNCHRONOUS_MODE_STRICT') | default('false', true) | bool }}"
+patroni_synchronous_node_count: "{{ lookup('env', 'PATRONI_SYNCHRONOUS_NODE_COUNT') | default('1', true) | int }}"
+
+# Patroni REST API Authentication
+patroni_restapi_auth_enabled: "{{ lookup('env', 'PATRONI_RESTAPI_AUTH_ENABLED') | default('false', true) | bool }}"
+patroni_restapi_username: "{{ lookup('env', 'PATRONI_RESTAPI_USERNAME') | default('admin', true) }}"
+patroni_restapi_password: "{{ lookup('env', 'PATRONI_RESTAPI_PASSWORD') }}"
+
+# Patroni Callbacks
+patroni_callbacks_enabled: "{{ lookup('env', 'PATRONI_CALLBACKS_ENABLED') | default('true', true) | bool }}"
+patroni_scripts_dir: "{{ lookup('env', 'PATRONI_SCRIPTS_DIR') | default('/etc/patroni/scripts', true) }}"
+
+# Watchdog
+patroni_watchdog_mode: "{{ lookup('env', 'PATRONI_WATCHDOG_MODE') | default('off', true) }}"
+
+# =============================================================================
+# HAPROXY SETTINGS
+# =============================================================================
+haproxy_enabled: "{{ lookup('env', 'HAPROXY_ENABLED') | default('false', true) | bool }}"
+
+# =============================================================================
+# PGBOUNCER SETTINGS
+# =============================================================================
+pgbouncer_enabled: "{{ lookup('env', 'PGBOUNCER_ENABLED') | default('true', true) | bool }}"
+pgbouncer_listen_port: "{{ lookup('env', 'PGBOUNCER_LISTEN_PORT') | default('6432', true) | int }}"
+pgbouncer_listen_addr: "{{ lookup('env', 'PGBOUNCER_LISTEN_ADDR') | default('*', true) }}"
+pgbouncer_auth_type: "{{ lookup('env', 'PGBOUNCER_AUTH_TYPE') | default('md5', true) }}"
+pgbouncer_pool_mode: "{{ lookup('env', 'PGBOUNCER_POOL_MODE') | default('transaction', true) }}"
+pgbouncer_max_client_conn: "{{ lookup('env', 'PGBOUNCER_MAX_CLIENT_CONN') | default('1000', true) | int }}"
+pgbouncer_default_pool_size: "{{ lookup('env', 'PGBOUNCER_DEFAULT_POOL_SIZE') | default('25', true) | int }}"
+pgbouncer_min_pool_size: "{{ lookup('env', 'PGBOUNCER_MIN_POOL_SIZE') | default('5', true) | int }}"
+pgbouncer_reserve_pool_size: "{{ lookup('env', 'PGBOUNCER_RESERVE_POOL_SIZE') | default('5', true) | int }}"
+pgbouncer_reserve_pool_timeout: "{{ lookup('env', 'PGBOUNCER_RESERVE_POOL_TIMEOUT') | default('3', true) | int }}"
+pgbouncer_max_db_connections: "{{ lookup('env', 'PGBOUNCER_MAX_DB_CONNECTIONS') | default('50', true) | int }}"
+pgbouncer_max_user_connections: "{{ lookup('env', 'PGBOUNCER_MAX_USER_CONNECTIONS') | default('50', true) | int }}"
+pgbouncer_server_idle_timeout: "{{ lookup('env', 'PGBOUNCER_SERVER_IDLE_TIMEOUT') | default('600', true) | int }}"
+pgbouncer_client_idle_timeout: "{{ lookup('env', 'PGBOUNCER_CLIENT_IDLE_TIMEOUT') | default('0', true) | int }}"
+pgbouncer_server_connect_timeout: "{{ lookup('env', 'PGBOUNCER_SERVER_CONNECT_TIMEOUT') | default('15', true) | int }}"
+pgbouncer_server_login_retry: "{{ lookup('env', 'PGBOUNCER_SERVER_LOGIN_RETRY') | default('15', true) | int }}"
+pgbouncer_query_timeout: "{{ lookup('env', 'PGBOUNCER_QUERY_TIMEOUT') | default('0', true) | int }}"
+pgbouncer_query_wait_timeout: "{{ lookup('env', 'PGBOUNCER_QUERY_WAIT_TIMEOUT') | default('120', true) | int }}"
+pgbouncer_log_connections: "{{ lookup('env', 'PGBOUNCER_LOG_CONNECTIONS') | default('0', true) | int }}"
+pgbouncer_log_disconnections: "{{ lookup('env', 'PGBOUNCER_LOG_DISCONNECTIONS') | default('0', true) | int }}"
+pgbouncer_stats_period: "{{ lookup('env', 'PGBOUNCER_STATS_PERIOD') | default('60', true) | int }}"
+
+# =============================================================================
+# LOGGING SETTINGS
+# =============================================================================
+logging_enabled: "{{ lookup('env', 'LOGGING_ENABLED') | default('true', true) | bool }}"
+log_destination: "{{ lookup('env', 'LOG_DESTINATION') | default('stderr', true) }}"
+logging_collector: "{{ lookup('env', 'LOGGING_COLLECTOR') | default('on', true) }}"
+log_directory: "{{ lookup('env', 'LOG_DIRECTORY') | default('log', true) }}"
+log_filename: "{{ lookup('env', 'LOG_FILENAME') | default('postgresql-%Y-%m-%d_%H%M%S.log', true) }}"
+log_rotation_age: "{{ lookup('env', 'LOG_ROTATION_AGE') | default('1d', true) }}"
+log_rotation_size: "{{ lookup('env', 'LOG_ROTATION_SIZE') | default('100MB', true) }}"
+log_min_messages: "{{ lookup('env', 'LOG_MIN_MESSAGES') | default('warning', true) }}"
+log_min_error_statement: "{{ lookup('env', 'LOG_MIN_ERROR_STATEMENT') | default('error', true) }}"
+log_line_prefix: "{{ lookup('env', 'LOG_LINE_PREFIX') | default('%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h ', true) }}"

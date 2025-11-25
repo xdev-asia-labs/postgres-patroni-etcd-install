@@ -1,0 +1,148 @@
+---
+# etcd Role - Cài đặt và cấu hình etcd cluster
+
+# =============================================================================
+# CREATE ETCD USER AND GROUP
+# =============================================================================
+- name: Create etcd group
+  group:
+    name: "{{ etcd_group }}"
+    state: present
+    system: yes
+
+- name: Create etcd user
+  user:
+    name: "{{ etcd_user }}"
+    group: "{{ etcd_group }}"
+    shell: /bin/false
+    system: yes
+    create_home: no
+
+# =============================================================================
+# DOWNLOAD AND INSTALL ETCD
+# =============================================================================
+- name: Create etcd download directory
+  file:
+    path: /tmp/etcd
+    state: directory
+    mode: "0755"
+
+- name: Download etcd
+  get_url:
+    url: "https://github.com/etcd-io/etcd/releases/download/v{{ etcd_version }}/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
+    dest: "/tmp/etcd/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
+    mode: "0644"
+
+- name: Extract etcd
+  unarchive:
+    src: "/tmp/etcd/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
+    dest: /tmp/etcd
+    remote_src: yes
+
+- name: Install etcd binaries
+  copy:
+    src: "/tmp/etcd/etcd-v{{ etcd_version }}-linux-amd64/{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    mode: "0755"
+    remote_src: yes
+  loop:
+    - etcd
+    - etcdctl
+    - etcdutl
+
+- name: Clean up download directory
+  file:
+    path: /tmp/etcd
+    state: absent
+
+# =============================================================================
+# CREATE DIRECTORIES
+# =============================================================================
+- name: Create etcd data directory
+  file:
+    path: "{{ etcd_data_dir }}"
+    state: directory
+    owner: "{{ etcd_user }}"
+    group: "{{ etcd_group }}"
+    mode: "0700"
+
+- name: Create etcd config directory
+  file:
+    path: "{{ etcd_config_dir }}"
+    state: directory
+    owner: "{{ etcd_user }}"
+    group: "{{ etcd_group }}"
+    mode: "0755"
+
+# =============================================================================
+# CONFIGURE ETCD
+# =============================================================================
+- name: Create etcd configuration file
+  template:
+    src: etcd.conf.j2
+    dest: "{{ etcd_config_dir }}/etcd.conf"
+    owner: "{{ etcd_user }}"
+    group: "{{ etcd_group }}"
+    mode: "0644"
+  notify: Restart etcd
+
+- name: Create etcd systemd service
+  template:
+    src: etcd.service.j2
+    dest: /etc/systemd/system/etcd.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart etcd
+
+# =============================================================================
+# START ETCD SERVICE
+# =============================================================================
+- name: Reload systemd daemon
+  systemd:
+    daemon_reload: yes
+
+- name: Enable and start etcd service
+  systemd:
+    name: etcd
+    enabled: yes
+    state: started
+
+# =============================================================================
+# WAIT FOR ETCD CLUSTER
+# =============================================================================
+- name: Wait for etcd to be ready
+  wait_for:
+    host: "{{ ansible_host }}"
+    port: "{{ etcd_client_port }}"
+    delay: 5
+    timeout: 60
+
+- name: Wait for etcd cluster to form
+  shell: |
+    ETCDCTL_API=3 etcdctl --endpoints=http://{{ ansible_host }}:{{ etcd_client_port }} endpoint health
+  register: etcd_health
+  retries: 10
+  delay: 5
+  until: etcd_health.rc == 0
+  changed_when: false
+
+# =============================================================================
+# VERIFY ETCD CLUSTER (run only on first node)
+# =============================================================================
+- name: Check etcd cluster health
+  shell: |
+    ETCDCTL_API=3 etcdctl --endpoints={{ etcd_endpoints }} endpoint health --cluster
+  register: cluster_health
+  changed_when: false
+  when: inventory_hostname == groups['postgres'][0]
+  ignore_errors: true
+
+- name: Display etcd cluster health
+  debug:
+    msg: "{{ cluster_health.stdout_lines }}"
+  when:
+    - inventory_hostname == groups['postgres'][0]
+    - cluster_health is defined

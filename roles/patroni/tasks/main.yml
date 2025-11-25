@@ -1,0 +1,184 @@
+---
+# Patroni Role - Cài đặt và cấu hình Patroni
+
+# =============================================================================
+# INSTALL PYTHON DEPENDENCIES
+# =============================================================================
+- name: Install Python dependencies (Debian/Ubuntu)
+  apt:
+    name:
+      - python3
+      - python3-pip
+      - python3-dev
+      - python3-venv
+      - python3-psycopg2
+      - libpq-dev
+      - gcc
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Install Python dependencies (RedHat)
+  dnf:
+    name:
+      - python3
+      - python3-pip
+      - python3-devel
+      - python3-psycopg2
+      - "postgresql{{ postgresql_version }}-devel"
+      - gcc
+    state: present
+  when: ansible_os_family == "RedHat"
+
+# =============================================================================
+# INSTALL PATRONI
+# =============================================================================
+- name: Install Patroni with etcd support
+  pip:
+    name: "patroni[etcd]=={{ patroni_version }}"
+    executable: pip3
+    extra_args: --break-system-packages
+
+- name: Verify Patroni installation
+  shell: patroni --version
+  register: patroni_version_output
+  changed_when: false
+
+- name: Display Patroni version
+  debug:
+    msg: "{{ patroni_version_output.stdout }}"
+
+# =============================================================================
+# CREATE DIRECTORIES
+# =============================================================================
+- name: Create Patroni config directory
+  file:
+    path: "{{ patroni_config_dir }}"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0755"
+
+- name: Create Patroni scripts directory
+  file:
+    path: "{{ patroni_scripts_dir }}"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0755"
+  when: patroni_callbacks_enabled | default(true)
+
+# =============================================================================
+# CONFIGURE PATRONI
+# =============================================================================
+- name: Create Patroni configuration file
+  template:
+    src: patroni.yml.j2
+    dest: "{{ patroni_config_dir }}/patroni.yml"
+    owner: postgres
+    group: postgres
+    mode: "0600"
+  notify: Restart Patroni
+
+# =============================================================================
+# CREATE CALLBACK SCRIPTS
+# =============================================================================
+- name: Create on_role_change callback script
+  template:
+    src: on_role_change.sh.j2
+    dest: "{{ patroni_scripts_dir }}/on_role_change.sh"
+    owner: postgres
+    group: postgres
+    mode: "0755"
+  when: patroni_callbacks_enabled | default(true)
+
+- name: Create on_start callback script
+  template:
+    src: on_start.sh.j2
+    dest: "{{ patroni_scripts_dir }}/on_start.sh"
+    owner: postgres
+    group: postgres
+    mode: "0755"
+  when: patroni_callbacks_enabled | default(true)
+
+- name: Create on_stop callback script
+  template:
+    src: on_stop.sh.j2
+    dest: "{{ patroni_scripts_dir }}/on_stop.sh"
+    owner: postgres
+    group: postgres
+    mode: "0755"
+  when: patroni_callbacks_enabled | default(true)
+
+# =============================================================================
+# CREATE SYSTEMD SERVICE
+# =============================================================================
+- name: Create Patroni systemd service
+  template:
+    src: patroni.service.j2
+    dest: /etc/systemd/system/patroni.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart Patroni
+
+# =============================================================================
+# START PATRONI SERVICE
+# =============================================================================
+- name: Reload systemd daemon
+  systemd:
+    daemon_reload: yes
+
+- name: Enable Patroni service
+  systemd:
+    name: patroni
+    enabled: yes
+
+# Start Patroni on first node first, then others
+- name: Start Patroni on first node
+  systemd:
+    name: patroni
+    state: started
+  when: inventory_hostname == groups['postgres'][0]
+
+- name: Wait for first node to initialize cluster
+  wait_for:
+    host: "{{ hostvars[groups['postgres'][0]]['ansible_host'] }}"
+    port: "{{ patroni_api_port }}"
+    delay: 10
+    timeout: 120
+  when: inventory_hostname != groups['postgres'][0]
+
+- name: Start Patroni on remaining nodes
+  systemd:
+    name: patroni
+    state: started
+  when: inventory_hostname != groups['postgres'][0]
+
+# =============================================================================
+# VERIFY CLUSTER
+# =============================================================================
+- name: Wait for Patroni REST API
+  wait_for:
+    host: "{{ ansible_host }}"
+    port: "{{ patroni_api_port }}"
+    delay: 5
+    timeout: 60
+
+- name: Verify Patroni cluster status
+  shell: |
+    patronictl -c {{ patroni_config_dir }}/patroni.yml list
+  register: cluster_status
+  changed_when: false
+  retries: 5
+  delay: 10
+  until: cluster_status.rc == 0
+  when: inventory_hostname == groups['postgres'][0]
+
+- name: Display cluster status
+  debug:
+    msg: "{{ cluster_status.stdout_lines }}"
+  when:
+    - inventory_hostname == groups['postgres'][0]
+    - cluster_status is defined

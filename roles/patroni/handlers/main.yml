@@ -1,0 +1,11 @@
+---
+# Handlers for Patroni role
+
+- name: Reload systemd
+  systemd:
+    daemon_reload: yes
+
+- name: Restart Patroni
+  systemd:
+    name: patroni
+    state: restarted

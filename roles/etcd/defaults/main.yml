@@ -1,0 +1,15 @@
+---
+# etcd role defaults
+
+etcd_version: "3.5.11"
+etcd_data_dir: "/var/lib/etcd"
+etcd_config_dir: "/etc/etcd"
+etcd_client_port: 2379
+etcd_peer_port: 2380
+etcd_cluster_token: "etcd-cluster-patroni"
+etcd_user: "etcd"
+etcd_group: "etcd"
+etcd_auth_enabled: false
+
+# Build etcd endpoints from inventory
+etcd_endpoints: "{% for host in groups['postgres'] %}http://{{ hostvars[host]['ansible_host'] }}:{{ etcd_client_port }}{% if not loop.last %},{% endif %}{% endfor %}"

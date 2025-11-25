@@ -1,0 +1,16 @@
+---
+# PgBouncer Handlers
+
+- name: Reload systemd daemon
+  systemd:
+    daemon_reload: yes
+
+- name: Restart PgBouncer
+  systemd:
+    name: pgbouncer
+    state: restarted
+
+- name: Reload PgBouncer
+  systemd:
+    name: pgbouncer
+    state: reloaded

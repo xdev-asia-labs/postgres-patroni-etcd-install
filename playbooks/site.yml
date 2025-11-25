@@ -1,0 +1,206 @@
+---
+# Main Playbook - Deploy PostgreSQL HA Cluster with Patroni & etcd
+#
+# Usage:
+#   ansible-playbook playbooks/site.yml
+#   ansible-playbook playbooks/site.yml --limit postgres
+#   ansible-playbook playbooks/site.yml --tags "etcd"
+#   ansible-playbook playbooks/site.yml --check  # Dry run
+#
+# Author: xdev.asia
+# Date: 2024
+
+- name: Deploy PostgreSQL HA Cluster
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  pre_tasks:
+    - name: Display deployment info
+      debug:
+        msg: |
+          ============================================
+          PostgreSQL HA Cluster Deployment
+          ============================================
+          Target hosts: {{ ansible_play_hosts | join(', ') }}
+          PostgreSQL version: {{ postgresql_version | default('16') }}
+          etcd version: {{ etcd_version | default('3.5.11') }}
+          Patroni version: {{ patroni_version | default('3.2.0') }}
+          Cluster name: {{ patroni_scope | default('postgres') }}
+          ============================================
+      run_once: true
+
+    - name: Verify connectivity
+      ping:
+
+  roles: []
+
+# =============================================================================
+# COMMON SETUP
+# =============================================================================
+- name: Setup common configuration on all hosts
+  hosts: all
+  become: yes
+  gather_facts: yes
+  tags:
+    - common
+    - setup
+
+  roles:
+    - role: common
+
+# =============================================================================
+# POSTGRESQL INSTALLATION
+# =============================================================================
+- name: Install PostgreSQL on cluster nodes
+  hosts: postgres
+  become: yes
+  gather_facts: yes
+  tags:
+    - postgresql
+    - database
+
+  roles:
+    - role: postgresql
+
+# =============================================================================
+# ETCD CLUSTER
+# =============================================================================
+- name: Setup etcd cluster
+  hosts: postgres
+  become: yes
+  gather_facts: yes
+  tags:
+    - etcd
+    - dcs
+
+  roles:
+    - role: etcd
+
+# =============================================================================
+# PATRONI CLUSTER
+# =============================================================================
+- name: Setup Patroni cluster
+  hosts: postgres
+  become: yes
+  gather_facts: yes
+  tags:
+    - patroni
+    - ha
+
+  roles:
+    - role: patroni
+
+# =============================================================================
+# PGBOUNCER CONNECTION POOLER
+# =============================================================================
+- name: Setup PgBouncer connection pooler
+  hosts: postgres
+  become: yes
+  gather_facts: yes
+  tags:
+    - pgbouncer
+    - pooling
+
+  roles:
+    - role: pgbouncer
+
+# =============================================================================
+# HAPROXY LOAD BALANCER - DISABLED
+# =============================================================================
+# HAProxy is disabled - Applications connect directly to PgBouncer
+# Uncomment and set haproxy_enabled: true in all.yml if needed
+#- name: Setup HAProxy load balancer
+#  hosts: haproxy
+#  become: yes
+#  gather_facts: yes
+#  tags:
+#    - haproxy
+#    - loadbalancer
+#
+#  roles:
+#    - role: haproxy
+#  when: haproxy_enabled | default(false)
+
+# =============================================================================
+# POST DEPLOYMENT VERIFICATION
+# =============================================================================
+- name: Verify cluster deployment
+  hosts: postgres
+  become: yes
+  gather_facts: no
+  tags:
+    - verify
+    - test
+
+  tasks:
+    - name: Check etcd cluster health
+      shell: |
+        ETCDCTL_API=3 etcdctl --endpoints=http://{{ ansible_host }}:{{ etcd_client_port | default(2379) }} endpoint health
+      register: etcd_health
+      changed_when: false
+      when: inventory_hostname == groups['postgres'][0]
+
+    - name: Display etcd health
+      debug:
+        msg: "{{ etcd_health.stdout }}"
+      when:
+        - inventory_hostname == groups['postgres'][0]
+        - etcd_health is defined
+
+    - name: Check Patroni cluster status
+      shell: |
+        patronictl -c {{ patroni_config_dir | default('/etc/patroni') }}/patroni.yml list
+      register: patroni_status
+      changed_when: false
+      when: inventory_hostname == groups['postgres'][0]
+
+    - name: Display Patroni cluster status
+      debug:
+        msg: "{{ patroni_status.stdout_lines }}"
+      when:
+        - inventory_hostname == groups['postgres'][0]
+        - patroni_status is defined
+
+    - name: Test PostgreSQL connection
+      shell: |
+        sudo -u postgres psql -c "SELECT version();"
+      register: pg_version
+      changed_when: false
+      when: inventory_hostname == groups['postgres'][0]
+
+    - name: Display PostgreSQL version
+      debug:
+        msg: "{{ pg_version.stdout }}"
+      when:
+        - inventory_hostname == groups['postgres'][0]
+        - pg_version is defined
+
+    - name: Deployment summary
+      debug:
+        msg: |
+          ============================================
+          DEPLOYMENT COMPLETE!
+          ============================================
+
+          PostgreSQL HA Cluster is ready!
+
+          Cluster Name: {{ patroni_scope | default('postgres') }}
+
+          Connection Strings:
+          - Primary (Read-Write): 
+            psql -h {{ groups['haproxy'][0] | default(groups['postgres'][0]) }} -p {{ haproxy_postgres_frontend_port | default(5000) }} -U {{ postgresql_admin_user | default('admin') }} -d postgres
+
+          - Replica (Read-Only): 
+            psql -h {{ groups['haproxy'][0] | default(groups['postgres'][0]) }} -p {{ haproxy_postgres_readonly_port | default(5001) }} -U {{ postgresql_admin_user | default('admin') }} -d postgres
+
+          Management Commands:
+          - patronictl -c /etc/patroni/patroni.yml list
+          - patronictl -c /etc/patroni/patroni.yml switchover
+          - patronictl -c /etc/patroni/patroni.yml failover
+
+          HAProxy Stats:
+          - http://{{ groups['haproxy'][0] | default('localhost') }}:{{ haproxy_stats_port | default(7000) }}/stats
+
+          ============================================
+      run_once: true

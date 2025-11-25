@@ -1,0 +1,112 @@
+---
+# PgBouncer Installation and Configuration Tasks
+
+# =============================================================================
+# INSTALL PGBOUNCER
+# =============================================================================
+- name: Install PgBouncer (Debian/Ubuntu)
+  apt:
+    name:
+      - pgbouncer
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+
+- name: Install PgBouncer (RedHat)
+  dnf:
+    name:
+      - pgbouncer
+    state: present
+  when: ansible_os_family == "RedHat"
+
+# =============================================================================
+# CONFIGURE PGBOUNCER
+# =============================================================================
+- name: Create PgBouncer config directory
+  file:
+    path: /etc/pgbouncer
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0755"
+
+- name: Create PgBouncer log directory
+  file:
+    path: /var/log/pgbouncer
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0755"
+
+- name: Create PgBouncer configuration file
+  template:
+    src: pgbouncer.ini.j2
+    dest: /etc/pgbouncer/pgbouncer.ini
+    owner: postgres
+    group: postgres
+    mode: "0640"
+  notify: Restart PgBouncer
+
+- name: Create userlist.txt for authentication
+  template:
+    src: userlist.txt.j2
+    dest: /etc/pgbouncer/userlist.txt
+    owner: postgres
+    group: postgres
+    mode: "0600"
+  notify: Restart PgBouncer
+
+- name: Create PgBouncer systemd service
+  template:
+    src: pgbouncer.service.j2
+    dest: /etc/systemd/system/pgbouncer.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd daemon
+    - Restart PgBouncer
+
+- name: Enable and start PgBouncer service
+  systemd:
+    name: pgbouncer
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
+# =============================================================================
+# CONFIGURE FIREWALL FOR PGBOUNCER
+# =============================================================================
+- name: Configure UFW - Allow PgBouncer
+  ufw:
+    rule: allow
+    port: "{{ pgbouncer_listen_port }}"
+    proto: tcp
+  when: firewall_type == "ufw"
+
+- name: Configure firewalld - Allow PgBouncer
+  firewalld:
+    port: "{{ pgbouncer_listen_port }}/tcp"
+    permanent: yes
+    state: enabled
+    immediate: yes
+  when: firewall_type == "firewalld"
+
+# =============================================================================
+# VERIFY INSTALLATION
+# =============================================================================
+- name: Wait for PgBouncer to be ready
+  wait_for:
+    port: "{{ pgbouncer_listen_port }}"
+    host: 127.0.0.1
+    timeout: 30
+
+- name: Verify PgBouncer is running
+  shell: psql -p {{ pgbouncer_listen_port }} -U postgres -h localhost -c "SHOW VERSION" pgbouncer
+  register: pgbouncer_version
+  changed_when: false
+  failed_when: false
+
+- name: Display PgBouncer status
+  debug:
+    msg: "PgBouncer is running on port {{ pgbouncer_listen_port }}"

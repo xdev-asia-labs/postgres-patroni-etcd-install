@@ -1,0 +1,39 @@
+[Unit]
+Description=Patroni PostgreSQL Cluster Manager
+Documentation=https://patroni.readthedocs.io/
+After=network.target etcd.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=postgres
+Group=postgres
+
+# Patroni configuration
+Environment="PATRONI_CONFIGURATION={{ patroni_config_dir }}/patroni.yml"
+
+# Start Patroni
+ExecStart=/usr/local/bin/patroni {{ patroni_config_dir }}/patroni.yml
+
+# Reload configuration
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Restart on failure
+Restart=on-failure
+RestartSec=10s
+TimeoutSec=0
+
+# Kill the whole process group
+KillMode=process
+KillSignal=SIGINT
+
+# Limits
+LimitNOFILE=65536
+LimitNPROC=65536
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

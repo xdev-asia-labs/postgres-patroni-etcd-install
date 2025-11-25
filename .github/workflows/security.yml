@@ -1,0 +1,234 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # Run security scan every Monday at 00:00 UTC
+    - cron: "0 0 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  secret-scan:
+    name: Secret Detection
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog Secret Scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --debug --only-verified
+        continue-on-error: true
+
+      - name: Gitleaks Secret Scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+        continue-on-error: true
+
+  dependency-scan:
+    name: Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible safety pip-audit
+
+      - name: Run Safety check
+        run: |
+          safety check --json --output safety-report.json || true
+          if [ -f safety-report.json ]; then
+            echo "Safety scan completed"
+            cat safety-report.json
+          fi
+        continue-on-error: true
+
+      - name: Run pip-audit
+        run: |
+          pip-audit --format json --output pip-audit-report.json || true
+          if [ -f pip-audit-report.json ]; then
+            echo "Pip-audit scan completed"
+            cat pip-audit-report.json
+          fi
+        continue-on-error: true
+
+  infrastructure-scan:
+    name: Infrastructure as Code Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy IaC scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "config"
+          scan-ref: "."
+          format: "sarif"
+          output: "trivy-iac-results.sarif"
+          severity: "CRITICAL,HIGH,MEDIUM"
+        continue-on-error: true
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: "trivy-iac-results.sarif"
+        continue-on-error: true
+
+      - name: Run Checkov IaC scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: .
+          framework: ansible
+          output_format: sarif
+          output_file_path: checkov-results.sarif
+          soft_fail: true
+        continue-on-error: true
+
+  ansible-security:
+    name: Ansible Security Best Practices
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Ansible and security tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible ansible-lint ansible-inventory-grapher
+
+      - name: Check for hardcoded passwords
+        run: |
+          echo "Checking for hardcoded passwords in playbooks..."
+
+          # Check for common password patterns
+          if grep -r -E "(password|passwd|pwd):\s*['\"]?[^{]" playbooks/ roles/ --include="*.yml" --include="*.yaml" | grep -v "{{"; then
+            echo "⚠️  WARNING: Found potential hardcoded passwords!"
+            echo "Please ensure all passwords use variables from .env or vault"
+          else
+            echo "✅ No hardcoded passwords found"
+          fi
+        continue-on-error: true
+
+      - name: Check for sudo usage
+        run: |
+          echo "Checking sudo usage in playbooks..."
+          if grep -r "become:\s*yes" playbooks/ roles/ --include="*.yml" --include="*.yaml"; then
+            echo "ℹ️  Found sudo/become usage (this is expected for system configuration)"
+          fi
+
+      - name: Check SSH key security
+        run: |
+          echo "Checking for SSH key references..."
+          if grep -r "ssh.*key" playbooks/ roles/ --include="*.yml" --include="*.yaml" | grep -v "authorized_key"; then
+            echo "⚠️  Found SSH key references - ensure keys are properly secured"
+          else
+            echo "✅ No hardcoded SSH keys found"
+          fi
+        continue-on-error: true
+
+      - name: Validate .env.example
+        run: |
+          echo "Validating .env.example for sensitive data..."
+
+          # Check if .env.example contains actual passwords
+          if grep -E "PASSWORD=.{20,}" .env.example; then
+            echo "⚠️  WARNING: .env.example may contain real passwords!"
+            echo "Please use placeholder values only"
+          else
+            echo "✅ .env.example looks safe"
+          fi
+
+  sast-scan:
+    name: Static Application Security Testing
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/secrets
+            p/python
+        continue-on-error: true
+
+  security-summary:
+    name: Security Scan Summary
+    runs-on: ubuntu-latest
+    needs:
+      [
+        secret-scan,
+        dependency-scan,
+        infrastructure-scan,
+        ansible-security,
+        sast-scan,
+      ]
+    if: always()
+
+    steps:
+      - name: Security Scan Complete
+        run: |
+          echo "🔒 Security scan completed!"
+          echo ""
+          echo "Scans performed:"
+          echo "  ✓ Secret detection (TruffleHog, Gitleaks)"
+          echo "  ✓ Dependency vulnerabilities (Safety, pip-audit)"
+          echo "  ✓ Infrastructure as Code (Trivy, Checkov)"
+          echo "  ✓ Ansible security best practices"
+          echo "  ✓ Static Application Security Testing (Semgrep)"
+          echo ""
+          echo "Review the results in the Security tab of your repository."
+          echo "Address any CRITICAL or HIGH severity findings before deployment."
+
+      - name: Post security recommendations
+        run: |
+          echo ""
+          echo "🛡️  Security Recommendations:"
+          echo "  1. Never commit .env files with real passwords"
+          echo "  2. Use Ansible Vault for sensitive variables"
+          echo "  3. Rotate passwords regularly (quarterly recommended)"
+          echo "  4. Enable firewall rules on all nodes"
+          echo "  5. Use SSH key authentication only"
+          echo "  6. Keep PostgreSQL, Patroni, and etcd updated"
+          echo "  7. Enable SSL/TLS for PostgreSQL connections"
+          echo "  8. Restrict network access to cluster nodes only"
+          echo "  9. Implement regular security audits"
+          echo " 10. Monitor security advisories for dependencies"

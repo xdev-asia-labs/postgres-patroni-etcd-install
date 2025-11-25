@@ -1,0 +1,5 @@
+"postgres" "md5{{ (postgresql_superuser_password + 'postgres') | hash('md5') }}"
+"replicator" "md5{{ (postgresql_replication_password + 'replicator') | hash('md5') }}"
+{% if postgresql_admin_user is defined and postgresql_admin_password is defined %}
+"{{ postgresql_admin_user }}" "md5{{ (postgresql_admin_password + postgresql_admin_user) | hash('md5') }}"
+{% endif %}

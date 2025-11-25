@@ -1,0 +1,96 @@
+---
+# Backup Playbook
+#
+# This playbook creates a backup of the PostgreSQL database.
+#
+# Usage:
+#   ansible-playbook playbooks/backup.yml
+#   ansible-playbook playbooks/backup.yml -e "backup_name=daily_backup"
+
+- name: Backup PostgreSQL Database
+  hosts: postgres
+  become: yes
+  gather_facts: yes
+
+  vars:
+    backup_dir: "/var/backups/postgresql"
+    backup_name: "backup_{{ ansible_date_time.date }}_{{ ansible_date_time.hour }}{{ ansible_date_time.minute }}"
+    backup_retention_days: 7
+
+  tasks:
+    - name: Get cluster status
+      shell: |
+        patronictl -c {{ patroni_config_dir | default('/etc/patroni') }}/patroni.yml list -f json
+      register: cluster_status
+      run_once: true
+
+    - name: Parse cluster info
+      set_fact:
+        cluster_info: "{{ cluster_status.stdout | from_json }}"
+      run_once: true
+
+    - name: Find leader node
+      set_fact:
+        leader_node: "{{ item.Member }}"
+        leader_host: "{{ item.Host }}"
+      loop: "{{ cluster_info }}"
+      when: item.Role == 'Leader'
+      run_once: true
+
+    - name: Create backup directory
+      file:
+        path: "{{ backup_dir }}"
+        state: directory
+        owner: postgres
+        group: postgres
+        mode: "0700"
+      when: patroni_name == leader_node
+
+    - name: Perform pg_basebackup
+      shell: |
+        sudo -u postgres pg_basebackup \
+          -h {{ leader_host }} \
+          -D {{ backup_dir }}/{{ backup_name }} \
+          -Ft \
+          -z \
+          -Xs \
+          -P \
+          -v
+      when: patroni_name == leader_node
+      register: backup_result
+
+    - name: Display backup result
+      debug:
+        msg: "{{ backup_result.stderr_lines }}"
+      when:
+        - patroni_name == leader_node
+        - backup_result is defined
+
+    - name: Clean up old backups
+      shell: |
+        find {{ backup_dir }} -type d -mtime +{{ backup_retention_days }} -exec rm -rf {} \;
+      when: patroni_name == leader_node
+      ignore_errors: yes
+
+    - name: List current backups
+      shell: |
+        ls -la {{ backup_dir }}/
+      register: backup_list
+      when: patroni_name == leader_node
+
+    - name: Display backup list
+      debug:
+        msg: "{{ backup_list.stdout_lines }}"
+      when:
+        - patroni_name == leader_node
+        - backup_list is defined
+
+    - name: Success message
+      debug:
+        msg: |
+          ============================================
+          Backup completed successfully!
+          Location: {{ backup_dir }}/{{ backup_name }}
+          ============================================
+      when: patroni_name == leader_node
+      run_once: true

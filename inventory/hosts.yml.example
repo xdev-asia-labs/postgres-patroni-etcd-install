@@ -1,0 +1,26 @@
+---
+# Ansible Inventory for PostgreSQL HA Cluster (3 Nodes)
+# Copy this file to hosts.yml and update with your actual values
+
+all:
+  vars:
+    ansible_user: ubuntu
+    ansible_ssh_private_key_file: ~/.ssh/id_rsa
+    ansible_python_interpreter: /usr/bin/python3
+
+  children:
+    # PostgreSQL cluster nodes (3 nodes)
+    postgres:
+      hosts:
+        pg-node1:
+          ansible_host: 172.23.202.11  # Update with your IP
+          patroni_name: node1
+          etcd_name: etcd1
+        pg-node2:
+          ansible_host: 172.23.202.12  # Update with your IP
+          patroni_name: node2
+          etcd_name: etcd2
+        pg-node3:
+          ansible_host: 172.23.202.13  # Update with your IP
+          patroni_name: node3
+          etcd_name: etcd3

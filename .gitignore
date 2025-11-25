@@ -1,0 +1,66 @@
+# .gitignore for PostgreSQL HA Ansible project
+
+# Ansible
+*.retry
+.ansible/
+/tmp/
+
+# Ansible Galaxy
+roles/requirements.yml.lock
+
+# Sensitive files
+*.vault
+vault_password_file
+.vault_pass
+secrets/
+*.pem
+*.key
+*.crt
+.env
+
+# Inventory files with sensitive IPs/hostnames
+inventory/hosts.yml
+
+# Python
+*.pyc
+__pycache__/
+.Python
+*.py[cod]
+.venv/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test outputs
+tests/output/
+.cache/
+.pytest_cache/
+
+# Backup files
+*.bak
+*.backup
+*.orig
+
+# Terraform (if used)
+.terraform/
+*.tfstate
+*.tfstate.backup
+.terraformrc
+terraform.rc

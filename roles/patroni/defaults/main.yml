@@ -1,0 +1,31 @@
+---
+# Patroni role defaults
+
+patroni_version: "3.2.0"
+patroni_config_dir: "/etc/patroni"
+patroni_scope: "postgres"
+patroni_namespace: "/service/"
+patroni_api_port: 8008
+
+# DCS Settings
+patroni_ttl: 30
+patroni_loop_wait: 10
+patroni_retry_timeout: 10
+patroni_maximum_lag_on_failover: 1048576
+
+# Synchronous Mode
+patroni_synchronous_mode: false
+patroni_synchronous_mode_strict: false
+patroni_synchronous_node_count: 1
+
+# REST API Authentication
+patroni_restapi_auth_enabled: false
+patroni_restapi_username: "admin"
+patroni_restapi_password: "admin_password"
+
+# Callbacks
+patroni_callbacks_enabled: true
+patroni_scripts_dir: "/etc/patroni/scripts"
+
+# Watchdog
+patroni_watchdog_mode: "off"

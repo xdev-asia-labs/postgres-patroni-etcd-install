@@ -1,0 +1,33 @@
+[Unit]
+Description=etcd distributed reliable key-value store
+Documentation=https://etcd.io/docs/
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User={{ etcd_user }}
+Group={{ etcd_group }}
+
+# Load environment variables from config file
+EnvironmentFile={{ etcd_config_dir }}/etcd.conf
+
+# Start etcd
+ExecStart=/usr/local/bin/etcd
+
+# Restart on failure
+Restart=on-failure
+RestartSec=5s
+
+# Limits
+LimitNOFILE=65536
+LimitNPROC=65536
+
+# Security hardening
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths={{ etcd_data_dir }}
+
+[Install]
+WantedBy=multi-user.target
