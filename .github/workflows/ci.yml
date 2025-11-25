@@ -33,11 +33,14 @@ jobs:
 
       - name: Check inventory structure
         run: |
-          if [ ! -f inventory/hosts.yml ]; then
-            echo "Error: inventory/hosts.yml not found"
+          if [ ! -f inventory/hosts.yml.example ]; then
+            echo "Error: inventory/hosts.yml.example not found"
             exit 1
           fi
-          echo "✓ Inventory file exists"
+          echo "✓ Inventory example file exists"
+
+          # Create temporary hosts.yml from example for validation
+          cp inventory/hosts.yml.example inventory/hosts.yml
 
       - name: Validate playbook syntax
         run: |
