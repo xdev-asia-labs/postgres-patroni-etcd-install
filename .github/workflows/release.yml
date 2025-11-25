@@ -132,6 +132,8 @@ jobs:
       - name: Validate playbooks
         run: |
           echo "Validating Ansible playbooks..."
+          # Use example file as template
+          cp inventory/hosts.yml.example inventory/hosts.yml
           ansible-playbook --syntax-check playbooks/site.yml -i inventory/hosts.yml
 
       - name: Check required files
@@ -142,7 +144,7 @@ jobs:
             "README-vi.md"
             "LICENSE"
             ".env.example"
-            "inventory/hosts.yml"
+            "inventory/hosts.yml.example"
             "playbooks/site.yml"
           )
 
