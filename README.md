@@ -325,17 +325,242 @@ POSTGRESQL_MAINTENANCE_WORK_MEM=4GB
 
 #### Java / Spring Boot
 
+**application.yml Configuration:**
+
 ```yaml
-# application.yml
 spring:
   datasource:
     url: jdbc:postgresql://10.0.0.11:6432,10.0.0.12:6432,10.0.0.13:6432/postgres?targetServerType=primary&loadBalanceHosts=true
     username: postgres
     password: ${POSTGRESQL_SUPERUSER_PASSWORD}
+    driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 20       # Application pool (NOT database connections)
       minimum-idle: 5
       connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+  jpa:
+    hibernate:
+      ddl-auto: validate          # Use validate/none in production
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
+```
+
+**Maven Dependency:**
+
+```xml
+<dependency>
+    <groupId>org.postgresql</groupId>
+    <artifactId>postgresql</artifactId>
+    <version>42.7.1</version>
+</dependency>
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-jpa</artifactId>
+</dependency>
+```
+
+**Entity Example:**
+
+```java
+import jakarta.persistence.*;
+import lombok.Data;
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "users", indexes = {
+    @Index(name = "idx_email", columnList = "email"),
+    @Index(name = "idx_created_at", columnList = "created_at")
+})
+@Data
+public class User {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @Column(nullable = false, unique = true, length = 100)
+    private String email;
+    
+    @Column(nullable = false, length = 100)
+    private String username;
+    
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt = LocalDateTime.now();
+    
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+    
+    @Version
+    private Long version;  // Optimistic locking
+}
+```
+
+**Repository with Custom Queries:**
+
+```java
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public interface UserRepository extends JpaRepository<User, Long> {
+    
+    // Method name query
+    Optional<User> findByEmail(String email);
+    
+    List<User> findByUsernameContaining(String username);
+    
+    // Native query for PostgreSQL-specific features
+    @Query(value = "SELECT * FROM users WHERE email ILIKE %:search% " +
+                   "ORDER BY created_at DESC LIMIT :limit", 
+           nativeQuery = true)
+    List<User> searchUsers(@Param("search") String search, 
+                          @Param("limit") int limit);
+    
+    // JPQL with pagination
+    @Query("SELECT u FROM User u WHERE u.createdAt >= :startDate " +
+           "ORDER BY u.createdAt DESC")
+    List<User> findRecentUsers(@Param("startDate") LocalDateTime startDate);
+    
+    // Bulk update
+    @Modifying
+    @Transactional
+    @Query("UPDATE User u SET u.updatedAt = :now WHERE u.id IN :ids")
+    int bulkUpdateTimestamp(@Param("ids") List<Long> ids, 
+                           @Param("now") LocalDateTime now);
+    
+    // PostgreSQL full-text search
+    @Query(value = "SELECT * FROM users WHERE " +
+                   "to_tsvector('english', username || ' ' || email) @@ " +
+                   "plainto_tsquery('english', :query)", 
+           nativeQuery = true)
+    List<User> fullTextSearch(@Param("query") String query);
+    
+    // JSON query (if using JSONB column)
+    @Query(value = "SELECT * FROM users WHERE " +
+                   "metadata->>'status' = :status", 
+           nativeQuery = true)
+    List<User> findByJsonField(@Param("status") String status);
+    
+    // Window function example
+    @Query(value = "SELECT *, ROW_NUMBER() OVER (PARTITION BY created_at::date " +
+                   "ORDER BY id) as daily_rank FROM users " +
+                   "WHERE created_at >= :startDate", 
+           nativeQuery = true)
+    List<Object[]> getUsersWithRanking(@Param("startDate") LocalDateTime startDate);
+}
+```
+
+**Service Layer Example:**
+
+```java
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Service
+public class UserService {
+    
+    @Autowired
+    private UserRepository userRepository;
+    
+    @Transactional(readOnly = true)
+    public Page<User> getUsers(int page, int size) {
+        Pageable pageable = PageRequest.of(page, size, 
+            Sort.by("createdAt").descending());
+        return userRepository.findAll(pageable);
+    }
+    
+    @Transactional
+    public User createUser(User user) {
+        user.setCreatedAt(LocalDateTime.now());
+        return userRepository.save(user);
+    }
+    
+    @Transactional
+    public List<User> batchCreateUsers(List<User> users) {
+        users.forEach(u -> u.setCreatedAt(LocalDateTime.now()));
+        return userRepository.saveAll(users);
+    }
+    
+    @Transactional(readOnly = true)
+    public List<User> searchUsers(String query) {
+        return userRepository.searchUsers(query, 50);
+    }
+    
+    @Transactional
+    public void bulkUpdate(List<Long> userIds) {
+        userRepository.bulkUpdateTimestamp(userIds, LocalDateTime.now());
+    }
+}
+```
+
+**Connection Health Check:**
+
+```java
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.actuate.health.Health;
+import org.springframework.boot.actuate.health.HealthIndicator;
+import org.springframework.stereotype.Component;
+
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.Statement;
+
+@Component
+public class PostgreSQLHealthIndicator implements HealthIndicator {
+    
+    @Autowired
+    private DataSource dataSource;
+    
+    @Override
+    public Health health() {
+        try (Connection conn = dataSource.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT version(), " +
+                 "pg_is_in_recovery(), " +
+                 "pg_last_wal_receive_lsn(), " +
+                 "current_database()")) {
+            
+            if (rs.next()) {
+                return Health.up()
+                    .withDetail("database", rs.getString(4))
+                    .withDetail("version", rs.getString(1))
+                    .withDetail("is_replica", rs.getBoolean(2))
+                    .withDetail("wal_position", rs.getString(3))
+                    .build();
+            }
+        } catch (Exception e) {
+            return Health.down()
+                .withDetail("error", e.getMessage())
+                .build();
+        }
+        return Health.down().build();
+    }
+}
 ```
 
 #### Python (psycopg2)
