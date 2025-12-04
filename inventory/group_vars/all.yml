@@ -160,3 +160,12 @@ log_rotation_size: "{{ lookup('env', 'LOG_ROTATION_SIZE') | default('100MB', tru
 log_min_messages: "{{ lookup('env', 'LOG_MIN_MESSAGES') | default('warning', true) }}"
 log_min_error_statement: "{{ lookup('env', 'LOG_MIN_ERROR_STATEMENT') | default('error', true) }}"
 log_line_prefix: "{{ lookup('env', 'LOG_LINE_PREFIX') | default('%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h ', true) }}"
+
+# =============================================================================
+# APPLICATION DATABASES SETTINGS
+# =============================================================================
+app_databases_enabled: "{{ lookup('env', 'APP_DATABASES_ENABLED') | default('false', true) | bool }}"
+app_databases: "{{ lookup('env', 'APP_DATABASES') | default('[]', true) | from_json }}"
+app_db_encoding: "{{ lookup('env', 'APP_DB_ENCODING') | default('UTF8', true) }}"
+app_db_lc_collate: "{{ lookup('env', 'APP_DB_LC_COLLATE') | default('en_US.UTF-8', true) }}"
+app_db_lc_ctype: "{{ lookup('env', 'APP_DB_LC_CTYPE') | default('en_US.UTF-8', true) }}"

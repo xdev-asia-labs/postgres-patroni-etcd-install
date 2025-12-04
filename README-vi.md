@@ -398,13 +398,42 @@ jdbc:postgresql://10.0.0.11:5432,10.0.0.12:5432,10.0.0.13:5432/postgres?targetSe
 
 ## 🔧 Quản lý Cluster
 
+### Tạo Database Ứng dụng
+
+Tạo databases và users từ cấu hình `APP_DATABASES` trong `.env`:
+
+**1. Cấu hình trong `.env`:**
+
+```bash
+APP_DATABASES_ENABLED=true
+APP_DATABASES='[
+  {"name": "myapp_db", "user": "myapp_user", "password": "SecurePass@2024"},
+  {"name": "another_db", "user": "another_user", "password": "AnotherPass@2024"}
+]'
+```
+
+**2. Chạy playbook:**
+
+```bash
+set -a && source .env && set +a
+ansible-playbook playbooks/create-database.yml -i inventory/hosts.yml
+```
+
+Playbook sẽ:
+- Tạo database users với mật khẩu bảo mật
+- Tạo databases với owner được chỉ định
+- Cấp toàn bộ quyền trên databases
+- Cập nhật PgBouncer userlist để connection pooling
+
+**⚠️ Lưu ý**: Luôn kết nối qua PgBouncer (port 6432), KHÔNG phải PostgreSQL trực tiếp (port 5432).
+
 ### Lệnh Patroni
 
 Tất cả lệnh thực thi trên bất kỳ node nào trong cluster:
 
 ```bash
 # Kiểm tra trạng thái cluster
-patronictl -c /etc/patroni/patroni.yml list
+patronictll -c /etc/patroni/patroni.yml list
 
 # Switchover (chuyển đổi leader có kế hoạch)
 patronictl -c /etc/patroni/patroni.yml switchover --master pg-node1 --candidate pg-node2

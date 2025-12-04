@@ -1,0 +1,140 @@
+---
+# Playbook tạo databases từ APP_DATABASES config trong .env
+#
+# Sử dụng:
+#   set -a && source .env && set +a
+#   ansible-playbook playbooks/create-database.yml -i inventory/hosts.yml
+#
+# Cấu hình trong .env:
+#   APP_DATABASES_ENABLED=true
+#   APP_DATABASES='[
+#     {"name": "mydb", "user": "myuser", "password": "mypassword"},
+#     {"name": "mydb2", "user": "myuser2", "password": "mypassword2"}
+#   ]'
+
+- name: Create PostgreSQL Databases from APP_DATABASES
+  hosts: postgres
+  become: true
+
+  tasks:
+    - name: Check if database creation is enabled
+      ansible.builtin.fail:
+        msg: "APP_DATABASES_ENABLED is not set to true in .env file."
+      when: not app_databases_enabled
+      run_once: true
+
+    - name: Check if databases list is defined
+      ansible.builtin.fail:
+        msg: "APP_DATABASES is empty or not defined in .env file."
+      when: app_databases | length == 0
+      run_once: true
+
+    - name: Check if this node is the Patroni leader
+      ansible.builtin.shell: |
+        patronictl -c /etc/patroni/patroni.yml list --format=json | \
+        python3 -c "import sys,json; data=json.load(sys.stdin); print(next((m['Member'] for m in data if m.get('Role') == 'Leader'), ''))"
+      register: patroni_leader
+      changed_when: false
+      run_once: true
+      delegate_to: "{{ groups['postgres'][0] }}"
+
+    - name: Debug - Show leader and databases info
+      ansible.builtin.debug:
+        msg: |
+          Patroni Leader: {{ patroni_leader.stdout }}
+          Current host: {{ patroni_name }}
+          Databases to create: {{ app_databases | map(attribute='name') | list }}
+      run_once: true
+
+    - name: Create database users
+      become_user: postgres
+      community.postgresql.postgresql_user:
+        name: "{{ item.user }}"
+        password: "{{ item.password }}"
+        role_attr_flags: "LOGIN,NOSUPERUSER,NOCREATEDB,NOCREATEROLE"
+        state: present
+      loop: "{{ app_databases }}"
+      loop_control:
+        label: "{{ item.user }}"
+      when: patroni_name == patroni_leader.stdout
+
+    - name: Create databases
+      become_user: postgres
+      community.postgresql.postgresql_db:
+        name: "{{ item.name }}"
+        owner: "{{ item.user }}"
+        encoding: "{{ app_db_encoding }}"
+        lc_collate: "{{ app_db_lc_collate }}"
+        lc_ctype: "{{ app_db_lc_ctype }}"
+        template: "template0"
+        state: present
+      loop: "{{ app_databases }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: patroni_name == patroni_leader.stdout
+
+    - name: Grant all privileges on databases
+      become_user: postgres
+      community.postgresql.postgresql_privs:
+        database: "{{ item.name }}"
+        privs: ALL
+        type: database
+        role: "{{ item.user }}"
+        state: present
+      loop: "{{ app_databases }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: patroni_name == patroni_leader.stdout
+
+    - name: Grant schema privileges
+      become_user: postgres
+      community.postgresql.postgresql_privs:
+        database: "{{ item.name }}"
+        privs: ALL
+        type: schema
+        objs: public
+        role: "{{ item.user }}"
+        state: present
+      loop: "{{ app_databases }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: patroni_name == patroni_leader.stdout
+
+    - name: Update PgBouncer userlist.txt
+      ansible.builtin.lineinfile:
+        path: /etc/pgbouncer/userlist.txt
+        line: '"{{ item.user }}" "{{ item.password }}"'
+        state: present
+        create: false
+      loop: "{{ app_databases }}"
+      loop_control:
+        label: "{{ item.user }}"
+      notify: Reload PgBouncer
+
+    - name: Display connection info
+      ansible.builtin.debug:
+        msg: |
+
+          ╔══════════════════════════════════════════════════════════════════════════════╗
+          ║                    ✅ TẤT CẢ DATABASES ĐÃ ĐƯỢC TẠO!                          ║
+          ╚══════════════════════════════════════════════════════════════════════════════╝
+
+          📌 Kết nối qua PgBouncer (Port {{ pgbouncer_listen_port }}):
+          ────────────────────────────────────────────────────────────────────────────────
+          {% for db in app_databases %}
+          {{ loop.index }}. {{ db.name }}
+             User: {{ db.user }}
+             Pass: {{ db.password }}
+             URI:  postgresql://{{ db.user }}@{{ ansible_host }}:{{ pgbouncer_listen_port }}/{{ db.name }}
+          {% endfor %}
+          ────────────────────────────────────────────────────────────────────────────────
+          ⚠️  Luôn kết nối qua PgBouncer port {{ pgbouncer_listen_port }}, KHÔNG dùng port 5432
+          ────────────────────────────────────────────────────────────────────────────────
+      run_once: true
+      when: patroni_name == patroni_leader.stdout
+
+  handlers:
+    - name: Reload PgBouncer
+      ansible.builtin.systemd:
+        name: pgbouncer
+        state: reloaded

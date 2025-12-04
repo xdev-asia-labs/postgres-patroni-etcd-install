@@ -630,6 +630,35 @@ jdbc:postgresql://10.0.0.11:5432,10.0.0.12:5432,10.0.0.13:5432/postgres?targetSe
 
 ## 🔧 Cluster Management
 
+### Create Application Databases
+
+Create databases and users from `APP_DATABASES` configuration in `.env`:
+
+**1. Configure in `.env`:**
+
+```bash
+APP_DATABASES_ENABLED=true
+APP_DATABASES='[
+  {"name": "myapp_db", "user": "myapp_user", "password": "SecurePass@2024"},
+  {"name": "another_db", "user": "another_user", "password": "AnotherPass@2024"}
+]'
+```
+
+**2. Run playbook:**
+
+```bash
+set -a && source .env && set +a
+ansible-playbook playbooks/create-database.yml -i inventory/hosts.yml
+```
+
+The playbook will:
+- Create database users with secure passwords
+- Create databases with specified owners
+- Grant all privileges on databases
+- Update PgBouncer userlist for connection pooling
+
+**⚠️ Note**: Always connect via PgBouncer (port 6432), not PostgreSQL directly (port 5432).
+
 ### Patroni Commands
 
 All commands executed on any cluster node:

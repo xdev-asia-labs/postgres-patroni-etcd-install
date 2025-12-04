@@ -1,0 +1,22 @@
+# =============================================================================
+# APPLICATION DATABASES CONFIGURATION
+# =============================================================================
+# Bật/tắt tạo databases tự động
+APP_DATABASES_ENABLED=true
+
+# Danh sách databases (JSON format)
+# Format: [{"name": "db_name", "user": "db_user", "password": "secure_password"}]
+APP_DATABASES='[
+  {"name": "btxh_beneficiary", "user": "btxh_beneficiary_user", "password": "Btxh@Beneficiary#2024!Secure"},
+  {"name": "btxh_facility", "user": "btxh_facility_user", "password": "Btxh@Facility#2024!Secure"},
+  {"name": "btxh_socialworker", "user": "btxh_socialworker_user", "password": "Btxh@Socialworker#2024!Secure"},
+  {"name": "content_category", "user": "content_category_user", "password": "Content@Category#2024!Secure"},
+  {"name": "files", "user": "files_user", "password": "Files@Storage#2024!Secure"},
+  {"name": "identity_integration", "user": "identity_integration_user", "password": "Identity@Integration#2024!Secure"},
+  {"name": "keycloak", "user": "keycloak_user", "password": "Keycloak@Auth#2024!Secure"}
+]'
+
+# Database encoding defaults
+APP_DB_ENCODING=UTF8
+APP_DB_LC_COLLATE=en_US.UTF-8
+APP_DB_LC_CTYPE=en_US.UTF-8
