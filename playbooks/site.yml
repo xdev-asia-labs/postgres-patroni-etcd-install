@@ -164,9 +164,13 @@
 
     - name: Test PostgreSQL connection
       shell: |
-        sudo -u postgres psql -c "SELECT version();"
+        PGPASSWORD="{{ postgresql_superuser_password }}" psql -h localhost -p {{ postgresql_port }} -U {{ postgresql_superuser }} -c "SELECT version();"
       register: pg_version
       changed_when: false
+      failed_when: false
+      retries: 3
+      delay: 10
+      until: pg_version.rc == 0
       when: inventory_hostname == groups['postgres'][0]
 
     - name: Display PostgreSQL version
