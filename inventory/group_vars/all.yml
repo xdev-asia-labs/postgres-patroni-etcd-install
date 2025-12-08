@@ -65,9 +65,10 @@ postgresql_wal_keep_size: "{{ lookup('env', 'POSTGRESQL_WAL_KEEP_SIZE') | defaul
 postgresql_wal_log_hints: "{{ lookup('env', 'POSTGRESQL_WAL_LOG_HINTS') | default('on', true) }}"
 
 # SSL Configuration
-postgresql_ssl_enabled: "{{ lookup('env', 'POSTGRESQL_SSL_ENABLED') | default('false', true) | bool }}"
+postgresql_ssl_enabled: "{{ lookup('env', 'POSTGRESQL_SSL_ENABLED') | default('true', true) | bool }}"
 postgresql_ssl_cert_file: "{{ lookup('env', 'POSTGRESQL_SSL_CERT_FILE') | default('/etc/postgresql/ssl/server.crt', true) }}"
 postgresql_ssl_key_file: "{{ lookup('env', 'POSTGRESQL_SSL_KEY_FILE') | default('/etc/postgresql/ssl/server.key', true) }}"
+postgresql_ssl_ca_file: "{{ lookup('env', 'POSTGRESQL_SSL_CA_FILE') | default('/etc/postgresql/ssl/root.crt', true) }}"
 
 # =============================================================================
 # ETCD SETTINGS

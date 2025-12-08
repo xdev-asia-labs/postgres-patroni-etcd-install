@@ -1069,7 +1069,44 @@ This project includes comprehensive documentation:
 
 - **[README.md](README.md)** - Complete documentation (English)
 - **[README-vi.md](README-vi.md)** - Complete documentation (Vietnamese)
+- **[SECURITY.md](SECURITY.md)** - 🔒 Security hardening guide (CRITICAL for production)
+- **[MONITORING.md](MONITORING.md)** - Monitoring stack setup (Prometheus + Grafana)
 - **[.env.example](.env.example)** - Configuration template
+
+## 🔒 Security Features
+
+This deployment includes production-grade security hardening:
+
+✅ **Strong Authentication**
+- SCRAM-SHA-256 (replaces vulnerable MD5)
+- 32-character random passwords
+- Patroni REST API authentication
+
+✅ **Network Security**
+- Cluster-only access (no 0.0.0.0/0)
+- SSL/TLS encryption enabled by default
+- etcd authentication required
+
+✅ **Access Control**
+- Minimal privilege principle
+- Firewall rules (UFW/firewalld)
+- Audit logging support
+
+✅ **CVE Compliance**
+- PostgreSQL 18.2+ (fixes CVE-2025-8714)
+- Regular security updates
+- Vulnerability monitoring
+
+**Quick Security Setup:**
+```bash
+# Generate strong passwords
+./scripts/security_setup.sh --generate
+
+# Validate configuration
+./scripts/security_setup.sh --validate
+```
+
+📖 **Read [SECURITY.md](SECURITY.md) before deploying to production!**
 
 ## 🎯 Key Features Summary
 

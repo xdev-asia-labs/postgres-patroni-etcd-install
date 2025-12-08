@@ -116,10 +116,8 @@ bootstrap:
     - local all all peer
     - host all all 127.0.0.1/32 scram-sha-256
     - host all all ::1/128 scram-sha-256
-    # Cluster network
+    # Cluster network only (secure)
     - host all all {{ cluster_network }} scram-sha-256
-    # External connections (adjust as needed)
-    - host all all 0.0.0.0/0 md5
 
   # Users to create during bootstrap
   users:
