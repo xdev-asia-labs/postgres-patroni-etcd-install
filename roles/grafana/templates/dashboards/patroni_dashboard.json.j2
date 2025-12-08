@@ -1,0 +1,41 @@
+{
+  "dashboard": {
+    "title": "Patroni HA Cluster",
+    "uid": "patroni-ha",
+    "tags": ["patroni", "ha", "postgresql"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 1,
+    "refresh": "10s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Cluster Leader",
+        "type": "stat",
+        "targets": [{"expr": "patroni_master", "legendFormat": "{{instance}}"}],
+        "gridPos": {"x": 0, "y": 0, "w": 8, "h": 4}
+      },
+      {
+        "id": 2,
+        "title": "Patroni State",
+        "type": "table",
+        "targets": [{"expr": "patroni_patroni_running", "legendFormat": "{{instance}} - {{state}}"}],
+        "gridPos": {"x": 8, "y": 0, "w": 16, "h": 8}
+      },
+      {
+        "id": 3,
+        "title": "Timeline",
+        "type": "graph",
+        "targets": [{"expr": "patroni_postgres_timeline", "legendFormat": "{{instance}}"}],
+        "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8}
+      },
+      {
+        "id": 4,
+        "title": "Failover Events",
+        "type": "graph",
+        "targets": [{"expr": "changes(patroni_postgres_timeline[1h])", "legendFormat": "{{instance}}"}],
+        "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8}
+      }
+    ]
+  }
+}

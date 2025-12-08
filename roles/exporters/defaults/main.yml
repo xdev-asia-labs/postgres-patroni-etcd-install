@@ -1,0 +1,19 @@
+---
+# Exporters default variables
+
+# Node Exporter
+node_exporter_version: "{{ lookup('env', 'NODE_EXPORTER_VERSION') | default('1.8.2', true) }}"
+node_exporter_binary_dir: "{{ lookup('env', 'NODE_EXPORTER_BIN_DIR') | default('/usr/local/bin', true) }}"
+node_exporter_port: "{{ lookup('env', 'NODE_EXPORTER_PORT') | default('9100', true) | int }}"
+
+# PostgreSQL Exporter
+postgres_exporter_version: "{{ lookup('env', 'POSTGRES_EXPORTER_VERSION') | default('0.15.0', true) }}"
+postgres_exporter_binary_dir: "{{ lookup('env', 'POSTGRES_EXPORTER_BIN_DIR') | default('/usr/local/bin', true) }}"
+postgres_exporter_port: "{{ lookup('env', 'POSTGRES_EXPORTER_PORT') | default('9187', true) | int }}"
+postgres_exporter_dsn: "postgresql://{{ postgresql_admin_user }}:{{ postgresql_admin_password }}@localhost:{{ postgresql_port }}/postgres?sslmode=disable"
+
+# PgBouncer Exporter
+pgbouncer_exporter_version: "{{ lookup('env', 'PGBOUNCER_EXPORTER_VERSION') | default('0.9.0', true) }}"
+pgbouncer_exporter_binary_dir: "{{ lookup('env', 'PGBOUNCER_EXPORTER_BIN_DIR') | default('/usr/local/bin', true) }}"
+pgbouncer_exporter_port: "{{ lookup('env', 'PGBOUNCER_EXPORTER_PORT') | default('9127', true) | int }}"
+pgbouncer_exporter_connection_string: "postgresql://{{ postgresql_admin_user }}:{{ postgresql_admin_password }}@localhost:{{ pgbouncer_port }}/pgbouncer?sslmode=disable"

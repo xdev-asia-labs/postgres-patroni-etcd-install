@@ -1,0 +1,270 @@
+---
+# PostgreSQL Database Restore Playbook
+#
+# This playbook restores PostgreSQL databases from pg_dump files
+#
+# Usage:
+#   set -a && source .env && set +a
+#   ansible-playbook playbooks/restore.yml -i inventory/hosts.yml
+#
+# Options:
+#   -e "restore_all=true"                    # Restore all databases in backups/ directory
+#   -e "restore_database=db_name"            # Restore specific database
+#   -e "restore_file=/path/to/backup.dump"   # Restore from specific file
+#   -e "create_database=true"                # Create database if not exists (default: false)
+#   -e "drop_existing=false"                 # Drop existing database before restore (default: false)
+
+- name: Restore PostgreSQL Databases
+  hosts: postgres
+  become: yes
+  gather_facts: yes
+
+  vars:
+    backup_dir: "{{ playbook_dir }}/../backups"
+
+  tasks:
+    # =========================================================================
+    # 1. Pre-flight checks
+    # =========================================================================
+    - name: Check if this node is the Patroni leader
+      shell: |
+        patronictl -c /etc/patroni/patroni.yml list --format=json | \
+        python3 -c "import sys,json; data=json.load(sys.stdin); print(next((m['Member'] for m in data if m.get('Role') == 'Leader'), ''))"
+      register: patroni_leader
+      changed_when: false
+      run_once: true
+      delegate_to: "{{ groups['postgres'][0] }}"
+
+    - name: Set leader facts
+      set_fact:
+        is_leader: "{{ patroni_name == patroni_leader.stdout }}"
+        leader_host: "{{ ansible_host if patroni_name == patroni_leader.stdout else hostvars[groups['postgres'][0]]['ansible_host'] }}"
+      run_once: true
+
+    - name: Display leader information
+      debug:
+        msg: "Leader node: {{ patroni_leader.stdout }}, Will restore on: {{ leader_host }}"
+      run_once: true
+
+    - name: Check backup directory exists
+      stat:
+        path: "{{ backup_dir }}"
+      register: backup_dir_stat
+      delegate_to: localhost
+      become: false
+      run_once: true
+
+    - name: Fail if backup directory not found
+      fail:
+        msg: "Backup directory {{ backup_dir }} not found"
+      when: not backup_dir_stat.stat.exists
+      run_once: true
+
+    # =========================================================================
+    # 2. Discover backup files
+    # =========================================================================
+    - name: Find all backup files
+      find:
+        paths: "{{ backup_dir }}"
+        patterns: "*.dump"
+      register: backup_files
+      delegate_to: localhost
+      become: false
+      run_once: true
+      when: restore_all | default(false) | bool
+
+    - name: Parse database names from backup files
+      set_fact:
+        databases_to_restore: "{{ databases_to_restore | default([]) + [{ 'name': item.path | basename | regex_replace('_backup_.*\\.dump$', ''), 'file': item.path }] }}"
+      loop: "{{ backup_files.files }}"
+      when: restore_all | default(false) | bool
+      run_once: true
+
+    - name: Set single database restore
+      set_fact:
+        databases_to_restore:
+          - name: "{{ restore_database }}"
+            file: "{{ restore_file | default(backup_dir + '/' + restore_database + '_backup_*.dump') }}"
+      when:
+        - not (restore_all | default(false) | bool)
+        - restore_database is defined
+      run_once: true
+
+    - name: Display databases to restore
+      debug:
+        msg: "Will restore {{ databases_to_restore | length }} database(s): {{ databases_to_restore | map(attribute='name') | list }}"
+      when: databases_to_restore is defined
+      run_once: true
+
+    - name: Fail if no databases to restore
+      fail:
+        msg: "No databases to restore. Use -e 'restore_all=true' or -e 'restore_database=dbname'"
+      when: databases_to_restore is not defined or databases_to_restore | length == 0
+      run_once: true
+
+    # =========================================================================
+    # 3. Create temporary restore directory on leader
+    # =========================================================================
+    - name: Create temporary restore directory on leader
+      file:
+        path: "/tmp/postgres_restore"
+        state: directory
+        owner: postgres
+        group: postgres
+        mode: "0700"
+      when: patroni_name == patroni_leader.stdout
+
+    # =========================================================================
+    # 4. Copy backup files to leader node
+    # =========================================================================
+    - name: Copy backup files to leader node
+      copy:
+        src: "{{ item.file }}"
+        dest: "/tmp/postgres_restore/{{ item.file | basename }}"
+        owner: postgres
+        group: postgres
+        mode: "0600"
+      loop: "{{ databases_to_restore }}"
+      when: patroni_name == patroni_leader.stdout
+
+    # =========================================================================
+    # 5. Check if databases exist
+    # =========================================================================
+    - name: Check if databases exist
+      become_user: postgres
+      shell: |
+        {{ postgresql_bin_dir }}/psql -U {{ postgresql_superuser }} -lqt | cut -d \| -f 1 | grep -w "{{ item.name }}" | wc -l
+      register: db_exists
+      loop: "{{ databases_to_restore }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: patroni_name == patroni_leader.stdout
+      changed_when: false
+
+    # =========================================================================
+    # 6. Drop existing databases (if requested)
+    # =========================================================================
+    - name: Drop existing databases
+      become_user: postgres
+      shell: |
+        {{ postgresql_bin_dir }}/psql -U {{ postgresql_superuser }} -c "DROP DATABASE IF EXISTS {{ item.item.name }};"
+      loop: "{{ db_exists.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+      when:
+        - patroni_name == patroni_leader.stdout
+        - drop_existing | default(false) | bool
+        - item.stdout | int > 0
+      register: drop_result
+
+    # =========================================================================
+    # 7. Create databases (if requested)
+    # =========================================================================
+    - name: Create databases if they don't exist
+      become_user: postgres
+      shell: |
+        {{ postgresql_bin_dir }}/psql -U {{ postgresql_superuser }} -c "CREATE DATABASE {{ item.item.name }} ENCODING 'UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8';"
+      loop: "{{ db_exists.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+      when:
+        - patroni_name == patroni_leader.stdout
+        - create_database | default(false) | bool or drop_existing | default(false) | bool
+        - item.stdout | int == 0 or drop_existing | default(false) | bool
+      register: create_result
+      ignore_errors: yes
+
+    # =========================================================================
+    # 8. Restore databases
+    # =========================================================================
+    - name: Restore databases from dump files
+      become_user: postgres
+      shell: |
+        {{ postgresql_bin_dir }}/pg_restore -U {{ postgresql_superuser }} \
+          -d {{ item.name }} \
+          --verbose \
+          --clean \
+          --if-exists \
+          --no-owner \
+          --no-privileges \
+          /tmp/postgres_restore/{{ item.file | basename }}
+      loop: "{{ databases_to_restore }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: patroni_name == patroni_leader.stdout
+      register: restore_result
+      ignore_errors: yes
+
+    - name: Display restore results
+      debug:
+        msg: |
+          Database: {{ item.item.name }}
+          Status: {{ 'SUCCESS' if item.rc == 0 else 'FAILED' }}
+          {% if item.rc != 0 %}
+          Error: {{ item.stderr | default('Unknown error') }}
+          {% endif %}
+      loop: "{{ restore_result.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+      when:
+        - patroni_name == patroni_leader.stdout
+        - restore_result is defined
+
+    # =========================================================================
+    # 9. Verify restored databases
+    # =========================================================================
+    - name: Verify databases exist after restore
+      become_user: postgres
+      shell: |
+        {{ postgresql_bin_dir }}/psql -U {{ postgresql_superuser }} -d {{ item.name }} -c "SELECT COUNT(*) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema');"
+      loop: "{{ databases_to_restore }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: patroni_name == patroni_leader.stdout
+      register: verify_result
+      ignore_errors: yes
+
+    - name: Display verification results
+      debug:
+        msg: |
+          Database: {{ item.item.name }}
+          Tables count: {{ item.stdout_lines[-1] if item.rc == 0 else 'N/A' }}
+          Status: {{ 'VERIFIED' if item.rc == 0 else 'FAILED' }}
+      loop: "{{ verify_result.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+      when:
+        - patroni_name == patroni_leader.stdout
+        - verify_result is defined
+
+    # =========================================================================
+    # 10. Cleanup
+    # =========================================================================
+    - name: Cleanup temporary restore directory
+      file:
+        path: "/tmp/postgres_restore"
+        state: absent
+      when: patroni_name == patroni_leader.stdout
+
+    # =========================================================================
+    # 11. Summary
+    # =========================================================================
+    - name: Restore summary
+      debug:
+        msg: |
+          ============================================================
+          RESTORE SUMMARY
+          ============================================================
+          Total databases processed: {{ databases_to_restore | length }}
+          Successful: {{ restore_result.results | selectattr('rc', 'equalto', 0) | list | length }}
+          Failed: {{ restore_result.results | rejectattr('rc', 'equalto', 0) | list | length }}
+
+          Databases restored:
+          {% for item in restore_result.results %}
+          - {{ item.item.name }}: {{ 'SUCCESS' if item.rc == 0 else 'FAILED' }}
+          {% endfor %}
+          ============================================================
+      when:
+        - patroni_name == patroni_leader.stdout
+        - restore_result is defined
+      run_once: true

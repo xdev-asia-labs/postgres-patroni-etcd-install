@@ -652,6 +652,7 @@ ansible-playbook playbooks/create-database.yml -i inventory/hosts.yml
 ```
 
 The playbook will:
+
 - Create database users with secure passwords
 - Create databases with specified owners
 - Grant all privileges on databases

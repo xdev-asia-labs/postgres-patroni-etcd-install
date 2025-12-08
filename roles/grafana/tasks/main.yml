@@ -1,0 +1,119 @@
+---
+# Grafana Installation and Configuration
+
+- name: Install Grafana dependencies
+  apt:
+    name:
+      - apt-transport-https
+      - software-properties-common
+      - wget
+    state: present
+    update_cache: yes
+
+- name: Add Grafana GPG key
+  apt_key:
+    url: https://apt.grafana.com/gpg.key
+    state: present
+
+- name: Add Grafana repository
+  apt_repository:
+    repo: "deb https://apt.grafana.com stable main"
+    state: present
+    filename: grafana
+
+- name: Install Grafana
+  apt:
+    name: grafana
+    state: present
+    update_cache: yes
+
+- name: Create Grafana provisioning directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: grafana
+    group: grafana
+    mode: "0755"
+  loop:
+    - /etc/grafana/provisioning/datasources
+    - /etc/grafana/provisioning/dashboards
+    - /var/lib/grafana/dashboards
+
+- name: Deploy Grafana configuration
+  template:
+    src: grafana.ini.j2
+    dest: /etc/grafana/grafana.ini
+    owner: grafana
+    group: grafana
+    mode: "0640"
+  notify: restart grafana
+
+- name: Deploy Grafana datasource configuration
+  template:
+    src: datasource.yml.j2
+    dest: /etc/grafana/provisioning/datasources/prometheus.yml
+    owner: grafana
+    group: grafana
+    mode: "0644"
+  notify: restart grafana
+
+- name: Deploy Grafana dashboard provisioning config
+  template:
+    src: dashboard_provisioning.yml.j2
+    dest: /etc/grafana/provisioning/dashboards/default.yml
+    owner: grafana
+    group: grafana
+    mode: "0644"
+  notify: restart grafana
+
+- name: Deploy PostgreSQL dashboard
+  template:
+    src: dashboards/postgresql_dashboard.json.j2
+    dest: /var/lib/grafana/dashboards/postgresql_dashboard.json
+    owner: grafana
+    group: grafana
+    mode: "0644"
+  notify: restart grafana
+
+- name: Deploy Patroni dashboard
+  template:
+    src: dashboards/patroni_dashboard.json.j2
+    dest: /var/lib/grafana/dashboards/patroni_dashboard.json
+    owner: grafana
+    group: grafana
+    mode: "0644"
+  notify: restart grafana
+
+- name: Deploy Node Exporter dashboard
+  template:
+    src: dashboards/node_exporter_dashboard.json.j2
+    dest: /var/lib/grafana/dashboards/node_exporter_dashboard.json
+    owner: grafana
+    group: grafana
+    mode: "0644"
+  notify: restart grafana
+
+- name: Deploy etcd dashboard
+  template:
+    src: dashboards/etcd_dashboard.json.j2
+    dest: /var/lib/grafana/dashboards/etcd_dashboard.json
+    owner: grafana
+    group: grafana
+    mode: "0644"
+  notify: restart grafana
+
+- name: Open Grafana port in firewall
+  ufw:
+    rule: allow
+    port: "{{ grafana_http_port }}"
+    proto: tcp
+    comment: "Grafana web interface"
+  when:
+    - firewall_enabled | default(true) | bool
+    - firewall_type == "ufw"
+
+- name: Enable and start Grafana service
+  systemd:
+    name: grafana-server
+    state: started
+    enabled: yes

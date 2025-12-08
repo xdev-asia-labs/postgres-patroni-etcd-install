@@ -169,3 +169,55 @@ app_databases: "{{ lookup('env', 'APP_DATABASES') | default('[]', true) | from_j
 app_db_encoding: "{{ lookup('env', 'APP_DB_ENCODING') | default('UTF8', true) }}"
 app_db_lc_collate: "{{ lookup('env', 'APP_DB_LC_COLLATE') | default('en_US.UTF-8', true) }}"
 app_db_lc_ctype: "{{ lookup('env', 'APP_DB_LC_CTYPE') | default('en_US.UTF-8', true) }}"
+
+# =============================================================================
+# MONITORING SETTINGS (Prometheus + Grafana)
+# =============================================================================
+# Monitoring Control
+monitoring_enabled: "{{ lookup('env', 'MONITORING_ENABLED') | default('false', true) | bool }}"
+monitoring_server_ip: "{{ lookup('env', 'MONITORING_SERVER_IP') | default('172.23.202.11', true) }}"
+monitoring_server_name: "{{ lookup('env', 'MONITORING_SERVER_NAME') | default('pg-node1', true) }}"
+
+# Prometheus
+prometheus_version: "{{ lookup('env', 'PROMETHEUS_VERSION') | default('3.0.1', true) }}"
+prometheus_web_listen_port: "{{ lookup('env', 'PROMETHEUS_PORT') | default('9090', true) | int }}"
+prometheus_binary_install_dir: "{{ lookup('env', 'PROMETHEUS_BIN_DIR') | default('/usr/local/bin', true) }}"
+prometheus_config_dir: "{{ lookup('env', 'PROMETHEUS_CONFIG_DIR') | default('/etc/prometheus', true) }}"
+prometheus_data_dir: "{{ lookup('env', 'PROMETHEUS_DATA_DIR') | default('/var/lib/prometheus', true) }}"
+prometheus_retention_time: "{{ lookup('env', 'PROMETHEUS_RETENTION_TIME') | default('30d', true) }}"
+prometheus_retention_size: "{{ lookup('env', 'PROMETHEUS_RETENTION_SIZE') | default('50GB', true) }}"
+prometheus_scrape_interval: "{{ lookup('env', 'PROMETHEUS_SCRAPE_INTERVAL') | default('15s', true) }}"
+prometheus_evaluation_interval: "{{ lookup('env', 'PROMETHEUS_EVALUATION_INTERVAL') | default('15s', true) }}"
+prometheus_cluster_name: "{{ lookup('env', 'PROMETHEUS_CLUSTER_NAME') | default('postgres-ha', true) }}"
+prometheus_environment: "{{ lookup('env', 'PROMETHEUS_ENVIRONMENT') | default('production', true) }}"
+prometheus_alerting_enabled: "{{ lookup('env', 'PROMETHEUS_ALERTING_ENABLED') | default('true', true) | bool }}"
+prometheus_alertmanager_targets: "{{ lookup('env', 'PROMETHEUS_ALERTMANAGER_TARGETS') | default('localhost:9093', true) | split(',') }}"
+prometheus_web_external_url: "{{ lookup('env', 'PROMETHEUS_EXTERNAL_URL') | default('', true) }}"
+
+# Grafana
+grafana_version: "{{ lookup('env', 'GRAFANA_VERSION') | default('latest', true) }}"
+grafana_http_port: "{{ lookup('env', 'GRAFANA_PORT') | default('3000', true) | int }}"
+grafana_domain: "{{ lookup('env', 'GRAFANA_DOMAIN') | default('localhost', true) }}"
+grafana_root_url: "{{ lookup('env', 'GRAFANA_ROOT_URL') | default('http://localhost:3000', true) }}"
+grafana_admin_user: "{{ lookup('env', 'GRAFANA_ADMIN_USER') | default('admin', true) }}"
+grafana_admin_password: "{{ lookup('env', 'GRAFANA_ADMIN_PASSWORD') | default('admin', true) }}"
+grafana_secret_key: "{{ lookup('env', 'GRAFANA_SECRET_KEY') | default('SW2YcwTIb9zpOOhoPsMm', true) }}"
+grafana_disable_gravatar: "{{ lookup('env', 'GRAFANA_DISABLE_GRAVATAR') | default('false', true) | bool }}"
+grafana_allow_sign_up: "{{ lookup('env', 'GRAFANA_ALLOW_SIGN_UP') | default('false', true) | bool }}"
+prometheus_datasource_url: "{{ lookup('env', 'PROMETHEUS_URL') | default('http://localhost:9090', true) }}"
+prometheus_datasource_access: "{{ lookup('env', 'PROMETHEUS_ACCESS') | default('proxy', true) }}"
+
+# Exporters
+node_exporter_version: "{{ lookup('env', 'NODE_EXPORTER_VERSION') | default('1.8.2', true) }}"
+node_exporter_port: "{{ lookup('env', 'NODE_EXPORTER_PORT') | default('9100', true) | int }}"
+node_exporter_binary_dir: "{{ lookup('env', 'NODE_EXPORTER_BIN_DIR') | default('/usr/local/bin', true) }}"
+
+postgres_exporter_version: "{{ lookup('env', 'POSTGRES_EXPORTER_VERSION') | default('0.15.0', true) }}"
+postgres_exporter_port: "{{ lookup('env', 'POSTGRES_EXPORTER_PORT') | default('9187', true) | int }}"
+postgres_exporter_binary_dir: "{{ lookup('env', 'POSTGRES_EXPORTER_BIN_DIR') | default('/usr/local/bin', true) }}"
+postgres_exporter_dsn: "postgresql://{{ postgresql_admin_user }}:{{ postgresql_admin_password }}@localhost:{{ postgresql_port }}/postgres?sslmode=disable"
+
+pgbouncer_exporter_version: "{{ lookup('env', 'PGBOUNCER_EXPORTER_VERSION') | default('0.9.0', true) }}"
+pgbouncer_exporter_port: "{{ lookup('env', 'PGBOUNCER_EXPORTER_PORT') | default('9127', true) | int }}"
+pgbouncer_exporter_binary_dir: "{{ lookup('env', 'PGBOUNCER_EXPORTER_BIN_DIR') | default('/usr/local/bin', true) }}"
+pgbouncer_exporter_connection_string: "postgresql://{{ postgresql_admin_user }}:{{ postgresql_admin_password }}@localhost:{{ pgbouncer_listen_port }}/pgbouncer?sslmode=disable"

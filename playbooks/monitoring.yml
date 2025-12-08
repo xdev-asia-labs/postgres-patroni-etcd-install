@@ -1,0 +1,109 @@
+---
+# Monitoring Stack Deployment Playbook
+#
+# This playbook deploys full monitoring stack:
+# - Prometheus (metrics collection)
+# - Grafana (visualization)
+# - Exporters (node, postgres, pgbouncer)
+#
+# Usage:
+#   set -a && source .env && set +a
+#   ansible-playbook playbooks/monitoring.yml -i inventory/hosts.yml
+#
+# To deploy to specific monitoring node:
+#   ansible-playbook playbooks/monitoring.yml -i inventory/hosts.yml --limit monitoring
+#
+# Enable/disable via MONITORING_ENABLED=true/false in .env
+# Configure monitoring server via MONITORING_SERVER_IP and MONITORING_SERVER_NAME in .env
+
+- name: Check Monitoring Configuration
+  hosts: localhost
+  gather_facts: no
+
+  tasks:
+    - name: Fail if monitoring is disabled
+      fail:
+        msg: |
+          Monitoring is DISABLED in configuration.
+          To enable monitoring, set MONITORING_ENABLED=true in .env file.
+      when: not (monitoring_enabled | default(false) | bool)
+
+    - name: Show monitoring configuration
+      debug:
+        msg: |
+          Monitoring Configuration:
+          - Enabled: {{ monitoring_enabled }}
+          - Server: {{ monitoring_server_name }} ({{ monitoring_server_ip }})
+          - Prometheus: http://{{ monitoring_server_ip }}:{{ prometheus_web_listen_port }}
+          - Grafana: http://{{ monitoring_server_ip }}:{{ grafana_http_port }}
+
+- name: Deploy Exporters on PostgreSQL Nodes
+  hosts: postgres
+  become: yes
+  gather_facts: yes
+
+  roles:
+    - exporters
+
+  tags:
+    - exporters
+    - monitoring
+
+- name: Deploy Prometheus Server
+  hosts: monitoring
+  become: yes
+  gather_facts: yes
+
+  roles:
+    - prometheus
+
+  tags:
+    - prometheus
+    - monitoring
+
+- name: Deploy Grafana Server
+  hosts: monitoring
+  become: yes
+  gather_facts: yes
+
+  roles:
+    - grafana
+
+  tags:
+    - grafana
+    - monitoring
+
+- name: Display Monitoring URLs
+  hosts: monitoring
+  gather_facts: no
+
+  tasks:
+    - name: Show monitoring access information
+      debug:
+        msg: |
+          ============================================================
+          MONITORING STACK DEPLOYED SUCCESSFULLY
+          ============================================================
+
+          Prometheus:
+            URL: http://{{ ansible_host }}:{{ prometheus_web_listen_port }}
+            Targets: http://{{ ansible_host }}:{{ prometheus_web_listen_port }}/targets
+            Alerts: http://{{ ansible_host }}:{{ prometheus_web_listen_port }}/alerts
+
+          Grafana:
+            URL: http://{{ ansible_host }}:{{ grafana_http_port }}
+            Username: {{ grafana_admin_user }}
+            Password: {{ grafana_admin_password }}
+            
+          Exporters (on each PostgreSQL node):
+            Node Exporter: http://<node-ip>:{{ node_exporter_port }}/metrics
+            PostgreSQL Exporter: http://<node-ip>:{{ postgres_exporter_port }}/metrics
+            PgBouncer Exporter: http://<node-ip>:{{ pgbouncer_exporter_port }}/metrics
+            Patroni Metrics: http://<node-ip>:{{ patroni_api_port }}/metrics
+            etcd Metrics: http://<node-ip>:{{ etcd_client_port }}/metrics
+
+          ============================================================
+      run_once: true
+
+  tags:
+    - monitoring

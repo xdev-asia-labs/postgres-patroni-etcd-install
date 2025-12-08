@@ -1,0 +1,26 @@
+---
+# Prometheus default variables
+prometheus_version: "{{ lookup('env', 'PROMETHEUS_VERSION') | default('3.0.1', true) }}"
+prometheus_binary_install_dir: "{{ lookup('env', 'PROMETHEUS_BIN_DIR') | default('/usr/local/bin', true) }}"
+prometheus_config_dir: "{{ lookup('env', 'PROMETHEUS_CONFIG_DIR') | default('/etc/prometheus', true) }}"
+prometheus_data_dir: "{{ lookup('env', 'PROMETHEUS_DATA_DIR') | default('/var/lib/prometheus', true) }}"
+
+# Prometheus web interface
+prometheus_web_listen_port: "{{ lookup('env', 'PROMETHEUS_PORT') | default('9090', true) | int }}"
+prometheus_web_external_url: "{{ lookup('env', 'PROMETHEUS_EXTERNAL_URL') | default('', true) }}"
+
+# Prometheus data retention
+prometheus_retention_time: "{{ lookup('env', 'PROMETHEUS_RETENTION_TIME') | default('30d', true) }}"
+prometheus_retention_size: "{{ lookup('env', 'PROMETHEUS_RETENTION_SIZE') | default('50GB', true) }}"
+
+# Scrape configuration
+prometheus_scrape_interval: "{{ lookup('env', 'PROMETHEUS_SCRAPE_INTERVAL') | default('15s', true) }}"
+prometheus_evaluation_interval: "{{ lookup('env', 'PROMETHEUS_EVALUATION_INTERVAL') | default('15s', true) }}"
+
+# Cluster identification
+prometheus_cluster_name: "{{ lookup('env', 'PROMETHEUS_CLUSTER_NAME') | default('postgres-ha', true) }}"
+prometheus_environment: "{{ lookup('env', 'PROMETHEUS_ENVIRONMENT') | default('production', true) }}"
+
+# Alerting
+prometheus_alerting_enabled: "{{ lookup('env', 'PROMETHEUS_ALERTING_ENABLED') | default('true', true) | bool }}"
+prometheus_alertmanager_targets: "{{ lookup('env', 'PROMETHEUS_ALERTMANAGER_TARGETS') | default('localhost:9093', true) | split(',') }}"

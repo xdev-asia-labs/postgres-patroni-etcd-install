@@ -1,0 +1,128 @@
+---
+# Prometheus Installation and Configuration
+
+- name: Create prometheus system group
+  group:
+    name: prometheus
+    system: yes
+    state: present
+
+- name: Create prometheus system user
+  user:
+    name: prometheus
+    system: yes
+    shell: /usr/sbin/nologin
+    group: prometheus
+    createhome: no
+
+- name: Create prometheus directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: prometheus
+    group: prometheus
+    mode: "0755"
+  loop:
+    - "{{ prometheus_config_dir }}"
+    - "{{ prometheus_data_dir }}"
+    - "{{ prometheus_config_dir }}/rules"
+    - "{{ prometheus_config_dir }}/file_sd"
+
+- name: Check if prometheus is installed
+  stat:
+    path: "{{ prometheus_binary_install_dir }}/prometheus"
+  register: prometheus_binary
+
+- name: Download prometheus
+  get_url:
+    url: "https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/prometheus-{{ prometheus_version }}.linux-amd64.tar.gz"
+    dest: "/tmp/prometheus-{{ prometheus_version }}.tar.gz"
+    mode: "0644"
+  when: not prometheus_binary.stat.exists
+
+- name: Extract prometheus
+  unarchive:
+    src: "/tmp/prometheus-{{ prometheus_version }}.tar.gz"
+    dest: /tmp
+    remote_src: yes
+  when: not prometheus_binary.stat.exists
+
+- name: Copy prometheus binaries
+  copy:
+    src: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64/{{ item }}"
+    dest: "{{ prometheus_binary_install_dir }}/{{ item }}"
+    mode: "0755"
+    owner: prometheus
+    group: prometheus
+    remote_src: yes
+  loop:
+    - prometheus
+    - promtool
+  when: not prometheus_binary.stat.exists
+
+- name: Copy prometheus console templates
+  copy:
+    src: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64/{{ item }}"
+    dest: "{{ prometheus_config_dir }}/{{ item }}"
+    owner: prometheus
+    group: prometheus
+    remote_src: yes
+  loop:
+    - consoles
+    - console_libraries
+  when: not prometheus_binary.stat.exists
+
+- name: Deploy prometheus configuration
+  template:
+    src: prometheus.yml.j2
+    dest: "{{ prometheus_config_dir }}/prometheus.yml"
+    owner: prometheus
+    group: prometheus
+    mode: "0644"
+    validate: "{{ prometheus_binary_install_dir }}/promtool check config %s"
+  notify: restart prometheus
+
+- name: Deploy prometheus alert rules
+  template:
+    src: alert_rules.yml.j2
+    dest: "{{ prometheus_config_dir }}/rules/alert_rules.yml"
+    owner: prometheus
+    group: prometheus
+    mode: "0644"
+    validate: "{{ prometheus_binary_install_dir }}/promtool check rules %s"
+  notify: restart prometheus
+  when: prometheus_alerting_enabled | bool
+
+- name: Deploy prometheus systemd service
+  template:
+    src: prometheus.service.j2
+    dest: /etc/systemd/system/prometheus.service
+    mode: "0644"
+  notify:
+    - reload systemd
+    - restart prometheus
+
+- name: Open prometheus port in firewall
+  ufw:
+    rule: allow
+    port: "{{ prometheus_web_listen_port }}"
+    proto: tcp
+    comment: "Prometheus web interface"
+  when:
+    - firewall_enabled | default(true) | bool
+    - firewall_type == "ufw"
+
+- name: Enable and start prometheus service
+  systemd:
+    name: prometheus
+    state: started
+    enabled: yes
+
+- name: Cleanup prometheus archive
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "/tmp/prometheus-{{ prometheus_version }}.tar.gz"
+    - "/tmp/prometheus-{{ prometheus_version }}.linux-amd64"
+  when: not prometheus_binary.stat.exists

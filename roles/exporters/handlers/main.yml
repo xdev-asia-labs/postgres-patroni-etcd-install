@@ -1,0 +1,22 @@
+---
+- name: reload systemd
+  systemd:
+    daemon_reload: yes
+
+- name: restart node_exporter
+  systemd:
+    name: node_exporter
+    state: restarted
+    enabled: yes
+
+- name: restart postgres_exporter
+  systemd:
+    name: postgres_exporter
+    state: restarted
+    enabled: yes
+
+- name: restart pgbouncer_exporter
+  systemd:
+    name: pgbouncer_exporter
+    state: restarted
+    enabled: yes

@@ -1,0 +1,21 @@
+[Unit]
+Description=PgBouncer Exporter
+Documentation=https://github.com/prometheus-community/pgbouncer_exporter
+After=network-online.target pgbouncer.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pgbouncer_exporter
+Group=pgbouncer_exporter
+EnvironmentFile=/etc/default/pgbouncer_exporter
+ExecStart={{ pgbouncer_exporter_binary_dir }}/pgbouncer_exporter \
+  --web.listen-address=:{{ pgbouncer_exporter_port }}
+
+SyslogIdentifier=pgbouncer_exporter
+Restart=always
+RestartSec=5
+StartLimitInterval=0
+
+[Install]
+WantedBy=multi-user.target

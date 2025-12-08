@@ -1,0 +1,48 @@
+{
+  "dashboard": {
+    "title": "PostgreSQL Overview",
+    "uid": "postgres-overview",
+    "tags": ["postgresql", "database"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 1,
+    "refresh": "30s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Database Status",
+        "type": "stat",
+        "targets": [{"expr": "pg_up", "legendFormat": "{{instance}}"}],
+        "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4}
+      },
+      {
+        "id": 2,
+        "title": "Active Connections",
+        "type": "graph",
+        "targets": [{"expr": "pg_stat_database_numbackends", "legendFormat": "{{datname}}"}],
+        "gridPos": {"x": 6, "y": 0, "w": 12, "h": 8}
+      },
+      {
+        "id": 3,
+        "title": "Replication Lag (seconds)",
+        "type": "graph",
+        "targets": [{"expr": "pg_replication_lag_seconds", "legendFormat": "{{instance}}"}],
+        "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8}
+      },
+      {
+        "id": 4,
+        "title": "Transaction Rate",
+        "type": "graph",
+        "targets": [{"expr": "rate(pg_stat_database_xact_commit[5m])", "legendFormat": "Commits"}, {"expr": "rate(pg_stat_database_xact_rollback[5m])", "legendFormat": "Rollbacks"}],
+        "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8}
+      },
+      {
+        "id": 5,
+        "title": "Cache Hit Ratio",
+        "type": "gauge",
+        "targets": [{"expr": "rate(pg_stat_database_blks_hit[5m]) / (rate(pg_stat_database_blks_hit[5m]) + rate(pg_stat_database_blks_read[5m])) * 100", "legendFormat": "{{datname}}"}],
+        "gridPos": {"x": 18, "y": 0, "w": 6, "h": 8}
+      }
+    ]
+  }
+}

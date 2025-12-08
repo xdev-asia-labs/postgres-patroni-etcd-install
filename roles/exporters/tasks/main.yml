@@ -1,0 +1,230 @@
+---
+# Exporters Installation - Node Exporter, PostgreSQL Exporter, PgBouncer Exporter
+
+# =============================================================================
+# Node Exporter - System metrics
+# =============================================================================
+- name: Create node_exporter system user
+  user:
+    name: node_exporter
+    system: yes
+    shell: /usr/sbin/nologin
+    createhome: no
+
+- name: Check if node_exporter is installed
+  stat:
+    path: "{{ node_exporter_binary_dir }}/node_exporter"
+  register: node_exporter_binary
+
+- name: Download node_exporter
+  get_url:
+    url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
+    dest: "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
+    mode: "0644"
+  when: not node_exporter_binary.stat.exists
+
+- name: Extract node_exporter
+  unarchive:
+    src: "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
+    dest: /tmp
+    remote_src: yes
+  when: not node_exporter_binary.stat.exists
+
+- name: Install node_exporter binary
+  copy:
+    src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
+    dest: "{{ node_exporter_binary_dir }}/node_exporter"
+    mode: "0755"
+    owner: node_exporter
+    group: node_exporter
+    remote_src: yes
+  when: not node_exporter_binary.stat.exists
+  notify: restart node_exporter
+
+- name: Deploy node_exporter systemd service
+  template:
+    src: node_exporter.service.j2
+    dest: /etc/systemd/system/node_exporter.service
+    mode: "0644"
+  notify:
+    - reload systemd
+    - restart node_exporter
+
+- name: Open node_exporter port in firewall
+  ufw:
+    rule: allow
+    port: "{{ node_exporter_port }}"
+    proto: tcp
+    comment: "Node Exporter metrics"
+  when:
+    - firewall_enabled | default(true) | bool
+    - firewall_type == "ufw"
+
+- name: Enable and start node_exporter
+  systemd:
+    name: node_exporter
+    state: started
+    enabled: yes
+
+# =============================================================================
+# PostgreSQL Exporter - Database metrics
+# =============================================================================
+- name: Create postgres_exporter system user
+  user:
+    name: postgres_exporter
+    system: yes
+    shell: /usr/sbin/nologin
+    createhome: no
+
+- name: Check if postgres_exporter is installed
+  stat:
+    path: "{{ postgres_exporter_binary_dir }}/postgres_exporter"
+  register: postgres_exporter_binary
+
+- name: Download postgres_exporter
+  get_url:
+    url: "https://github.com/prometheus-community/postgres_exporter/releases/download/v{{ postgres_exporter_version }}/postgres_exporter-{{ postgres_exporter_version }}.linux-amd64.tar.gz"
+    dest: "/tmp/postgres_exporter-{{ postgres_exporter_version }}.tar.gz"
+    mode: "0644"
+  when: not postgres_exporter_binary.stat.exists
+
+- name: Extract postgres_exporter
+  unarchive:
+    src: "/tmp/postgres_exporter-{{ postgres_exporter_version }}.tar.gz"
+    dest: /tmp
+    remote_src: yes
+  when: not postgres_exporter_binary.stat.exists
+
+- name: Install postgres_exporter binary
+  copy:
+    src: "/tmp/postgres_exporter-{{ postgres_exporter_version }}.linux-amd64/postgres_exporter"
+    dest: "{{ postgres_exporter_binary_dir }}/postgres_exporter"
+    mode: "0755"
+    owner: postgres_exporter
+    group: postgres_exporter
+    remote_src: yes
+  when: not postgres_exporter_binary.stat.exists
+  notify: restart postgres_exporter
+
+- name: Create postgres_exporter environment file
+  template:
+    src: postgres_exporter.env.j2
+    dest: /etc/default/postgres_exporter
+    mode: "0600"
+    owner: postgres_exporter
+    group: postgres_exporter
+  notify: restart postgres_exporter
+
+- name: Deploy postgres_exporter systemd service
+  template:
+    src: postgres_exporter.service.j2
+    dest: /etc/systemd/system/postgres_exporter.service
+    mode: "0644"
+  notify:
+    - reload systemd
+    - restart postgres_exporter
+
+- name: Open postgres_exporter port in firewall
+  ufw:
+    rule: allow
+    port: "{{ postgres_exporter_port }}"
+    proto: tcp
+    comment: "PostgreSQL Exporter metrics"
+  when:
+    - firewall_enabled | default(true) | bool
+    - firewall_type == "ufw"
+
+- name: Enable and start postgres_exporter
+  systemd:
+    name: postgres_exporter
+    state: started
+    enabled: yes
+
+# =============================================================================
+# PgBouncer Exporter - Connection pooling metrics
+# =============================================================================
+- name: Create pgbouncer_exporter system user
+  user:
+    name: pgbouncer_exporter
+    system: yes
+    shell: /usr/sbin/nologin
+    createhome: no
+
+- name: Check if pgbouncer_exporter is installed
+  stat:
+    path: "{{ pgbouncer_exporter_binary_dir }}/pgbouncer_exporter"
+  register: pgbouncer_exporter_binary
+
+- name: Download pgbouncer_exporter
+  get_url:
+    url: "https://github.com/prometheus-community/pgbouncer_exporter/releases/download/v{{ pgbouncer_exporter_version }}/pgbouncer_exporter-{{ pgbouncer_exporter_version }}.linux-amd64.tar.gz"
+    dest: "/tmp/pgbouncer_exporter-{{ pgbouncer_exporter_version }}.tar.gz"
+    mode: "0644"
+  when: not pgbouncer_exporter_binary.stat.exists
+
+- name: Extract pgbouncer_exporter
+  unarchive:
+    src: "/tmp/pgbouncer_exporter-{{ pgbouncer_exporter_version }}.tar.gz"
+    dest: /tmp
+    remote_src: yes
+  when: not pgbouncer_exporter_binary.stat.exists
+
+- name: Install pgbouncer_exporter binary
+  copy:
+    src: "/tmp/pgbouncer_exporter-{{ pgbouncer_exporter_version }}.linux-amd64/pgbouncer_exporter"
+    dest: "{{ pgbouncer_exporter_binary_dir }}/pgbouncer_exporter"
+    mode: "0755"
+    owner: pgbouncer_exporter
+    group: pgbouncer_exporter
+    remote_src: yes
+  when: not pgbouncer_exporter_binary.stat.exists
+  notify: restart pgbouncer_exporter
+
+- name: Create pgbouncer_exporter environment file
+  template:
+    src: pgbouncer_exporter.env.j2
+    dest: /etc/default/pgbouncer_exporter
+    mode: "0600"
+    owner: pgbouncer_exporter
+    group: pgbouncer_exporter
+  notify: restart pgbouncer_exporter
+
+- name: Deploy pgbouncer_exporter systemd service
+  template:
+    src: pgbouncer_exporter.service.j2
+    dest: /etc/systemd/system/pgbouncer_exporter.service
+    mode: "0644"
+  notify:
+    - reload systemd
+    - restart pgbouncer_exporter
+
+- name: Open pgbouncer_exporter port in firewall
+  ufw:
+    rule: allow
+    port: "{{ pgbouncer_exporter_port }}"
+    proto: tcp
+    comment: "PgBouncer Exporter metrics"
+  when:
+    - firewall_enabled | default(true) | bool
+    - firewall_type == "ufw"
+
+- name: Enable and start pgbouncer_exporter
+  systemd:
+    name: pgbouncer_exporter
+    state: started
+    enabled: yes
+
+# =============================================================================
+# Cleanup
+# =============================================================================
+- name: Cleanup exporter archives
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
+    - "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64"
+    - "/tmp/postgres_exporter-{{ postgres_exporter_version }}.tar.gz"
+    - "/tmp/postgres_exporter-{{ postgres_exporter_version }}.linux-amd64"
+    - "/tmp/pgbouncer_exporter-{{ pgbouncer_exporter_version }}.tar.gz"
+    - "/tmp/pgbouncer_exporter-{{ pgbouncer_exporter_version }}.linux-amd64"

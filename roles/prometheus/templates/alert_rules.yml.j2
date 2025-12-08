@@ -1,0 +1,185 @@
+groups:
+  - name: postgresql_alerts
+    interval: 30s
+    rules:
+      # PostgreSQL Down
+      - alert: PostgreSQLDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL instance {{ $labels.instance }} is down"
+          description: "PostgreSQL on {{ $labels.instance }} has been down for more than 1 minute."
+
+      # High Replication Lag
+      - alert: PostgreSQLReplicationLag
+        expr: pg_replication_lag_seconds > 60
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High replication lag on {{ $labels.instance }}"
+          description: "Replication lag is {{ $value }}s on {{ $labels.instance }}"
+
+      # Too Many Connections
+      - alert: PostgreSQLTooManyConnections
+        expr: sum(pg_stat_activity_count) by (instance) > (pg_settings_max_connections * 0.8)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL {{ $labels.instance }} has too many connections"
+          description: "{{ $labels.instance }} is using {{ $value }} of max {{ pg_settings_max_connections }} connections"
+
+      # Dead Tuples
+      - alert: PostgreSQLDeadTuples
+        expr: pg_stat_user_tables_n_dead_tup > 10000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL has too many dead tuples"
+          description: "Table {{ $labels.relname }} on {{ $labels.instance }} has {{ $value }} dead tuples"
+
+      # Slow Queries
+      - alert: PostgreSQLSlowQueries
+        expr: pg_slow_queries > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow queries detected on {{ $labels.instance }}"
+          description: "{{ $value }} slow queries running on {{ $labels.instance }}"
+
+  - name: patroni_alerts
+    interval: 30s
+    rules:
+      # Patroni No Leader
+      - alert: PatroniNoLeader
+        expr: count(patroni_master == 1) == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Patroni cluster has no leader"
+          description: "No leader detected in Patroni cluster for more than 1 minute"
+
+      # Patroni Node Down
+      - alert: PatroniNodeDown
+        expr: up{job="patroni"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Patroni node {{ $labels.instance }} is down"
+          description: "Patroni on {{ $labels.instance }} has been unreachable for more than 2 minutes"
+
+      # Patroni Timeline Changed
+      - alert: PatroniTimelineChanged
+        expr: changes(patroni_postgres_timeline[5m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Patroni timeline changed on {{ $labels.instance }}"
+          description: "Timeline change detected - possible failover occurred"
+
+  - name: etcd_alerts
+    interval: 30s
+    rules:
+      # etcd No Leader
+      - alert: EtcdNoLeader
+        expr: etcd_server_has_leader == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "etcd cluster has no leader"
+          description: "etcd cluster has no leader for more than 1 minute"
+
+      # etcd High Number of Leader Changes
+      - alert: EtcdHighNumberOfLeaderChanges
+        expr: rate(etcd_server_leader_changes_seen_total[15m]) > 3
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "etcd cluster unstable - frequent leader changes"
+          description: "etcd cluster has seen {{ $value }} leader changes in 15 minutes"
+
+      # etcd Member Down
+      - alert: EtcdMemberDown
+        expr: up{job="etcd"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "etcd member {{ $labels.instance }} is down"
+          description: "etcd member {{ $labels.instance }} has been down for more than 2 minutes"
+
+  - name: system_alerts
+    interval: 30s
+    rules:
+      # High CPU Usage
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is {{ $value }}% on {{ $labels.instance }}"
+
+      # High Memory Usage
+      - alert: HighMemoryUsage
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is {{ $value }}% on {{ $labels.instance }}"
+
+      # Low Disk Space
+      - alert: LowDiskSpace
+        expr: (node_filesystem_avail_bytes{fstype!="tmpfs"} / node_filesystem_size_bytes{fstype!="tmpfs"}) * 100 < 15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low disk space on {{ $labels.instance }}"
+          description: "Disk {{ $labels.mountpoint }} on {{ $labels.instance }} has only {{ $value }}% free space"
+
+      # Node Down
+      - alert: NodeDown
+        expr: up{job="node_exporter"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Node {{ $labels.instance }} is down"
+          description: "Node exporter on {{ $labels.instance }} has been down for more than 2 minutes"
+
+  - name: pgbouncer_alerts
+    interval: 30s
+    rules:
+      # PgBouncer High Active Connections
+      - alert: PgBouncerHighActiveConnections
+        expr: pgbouncer_pools_cl_active > (pgbouncer_config_max_client_conn * 0.8)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PgBouncer {{ $labels.instance }} has high active connections"
+          description: "{{ $value }} active connections out of max {{ pgbouncer_config_max_client_conn }}"
+
+      # PgBouncer Down
+      - alert: PgBouncerDown
+        expr: up{job="pgbouncer_exporter"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PgBouncer exporter {{ $labels.instance }} is down"
+          description: "PgBouncer exporter has been unreachable for more than 2 minutes"
